@@ -22,14 +22,20 @@ import android.util.Log
 import com.carled.app.core.common.Constants
 import com.carled.app.domain.model.BleDeviceModel
 import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.DeviceTelemetryStatus
+import com.carled.app.domain.model.TelemetryEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 @SuppressLint("MissingPermission")
 class CarLedBleManager(private val context: Context) {
@@ -51,6 +57,26 @@ class CarLedBleManager(private val context: Context) {
 
     private val _scannedDevices = MutableStateFlow<List<BleDeviceModel>>(emptyList())
     val scannedDevices = _scannedDevices.asStateFlow()
+
+    /**
+     * Phát ra Status Telemetry định kỳ (JSON không có field "event").
+     * Dùng để cập nhật UI trạng thái thiết bị.
+     */
+    private val _telemetryStatus = MutableStateFlow(DeviceTelemetryStatus())
+    val telemetryStatus = _telemetryStatus.asStateFlow()
+
+    /**
+     * Phát ra Event một lần (JSON có field "event").
+     * Dùng SharedFlow để UI nhận được ngay cả khi không collect liên tục.
+     *
+     * Các event: upload_started, upload_complete, upload_error,
+     *            marquee_active, wifi_connecting, projection_reloaded, canvas_cleared
+     */
+    private val _telemetryEvent = MutableSharedFlow<TelemetryEvent>(
+        replay = 0,
+        extraBufferCapacity = 16
+    )
+    val telemetryEvent: SharedFlow<TelemetryEvent> = _telemetryEvent.asSharedFlow()
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var scanJob: Job? = null
@@ -224,6 +250,63 @@ class CarLedBleManager(private val context: Context) {
         ) {
             val telemetryJson = String(characteristic.value, Charsets.UTF_8)
             Log.d(TAG, "Nhận Telemetry từ LED ESP32: $telemetryJson")
+            dispatchTelemetry(telemetryJson)
+        }
+    }
+
+    /**
+     * Phân tích gói tin JSON telemetry từ ESP32.
+     *
+     * Quy tắc:
+     *  - Nếu JSON có field "event" → parse thành [TelemetryEvent] và emit qua [_telemetryEvent]
+     *  - Nếu JSON KHÔNG có field "event" → parse thành [DeviceTelemetryStatus] và cập nhật [_telemetryStatus]
+     */
+    private fun dispatchTelemetry(json: String) {
+        runCatching {
+            val obj = JSONObject(json)
+            if (obj.has("event")) {
+                // ── Event packet ──
+                val event = when (val eventName = obj.optString("event")) {
+                    "upload_started"     -> TelemetryEvent.UploadStarted(
+                        expected = obj.optInt("expected", 0)
+                    )
+                    "upload_complete"    -> TelemetryEvent.UploadComplete(
+                        status = obj.optString("status", "ok"),
+                        mode   = obj.optInt("mode", 6)
+                    )
+                    "upload_error"       -> TelemetryEvent.UploadError(
+                        error = obj.optString("error", "unknown")
+                    )
+                    "marquee_active"     -> TelemetryEvent.MarqueeActive(
+                        text = obj.optString("text", "")
+                    )
+                    "wifi_connecting"    -> TelemetryEvent.WifiConnecting(
+                        ssid = obj.optString("ssid", "")
+                    )
+                    "projection_reloaded" -> TelemetryEvent.ProjectionReloaded(
+                        mode = obj.optInt("mode", 6)
+                    )
+                    "canvas_cleared"     -> TelemetryEvent.CanvasCleared
+                    else                 -> TelemetryEvent.Unknown(json)
+                }
+                scope.launch { _telemetryEvent.emit(event) }
+                Log.d(TAG, "Event: $event")
+            } else {
+                // ── Periodic status telemetry ──
+                val colorObj = obj.optJSONObject("color")
+                _telemetryStatus.value = DeviceTelemetryStatus(
+                    power      = obj.optBoolean("power", false),
+                    brightness = obj.optInt("brightness", 180),
+                    mode       = obj.optInt("mode", 0),
+                    speed      = obj.optInt("speed", 50),
+                    r          = colorObj?.optInt("r", 0) ?: 0,
+                    g          = colorObj?.optInt("g", 150) ?: 150,
+                    b          = colorObj?.optInt("b", 255) ?: 255,
+                    freeHeap   = obj.optInt("free_heap", 0)
+                )
+            }
+        }.onFailure {
+            Log.w(TAG, "Telemetry parse error: ${it.message} — raw: $json")
         }
     }
 
@@ -234,6 +317,10 @@ class CarLedBleManager(private val context: Context) {
         }
         lastSendTimestamp = now
         sendRawBytes(frame)
+    }
+
+    fun sendJson(json: String) {
+        sendRawBytes(json.toByteArray(Charsets.UTF_8))
     }
 
     private fun sendRawBytes(bytes: ByteArray) {

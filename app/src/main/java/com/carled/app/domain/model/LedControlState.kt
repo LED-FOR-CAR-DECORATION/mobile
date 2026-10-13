@@ -7,7 +7,8 @@ enum class LedMode(val code: Int, val displayName: String) {
     RAINBOW_WAVE(3, "Sóng cầu vồng"),
     CHASE_FLOW(4, "Dòng chảy đuổi màu"),
     MUSIC_REACTIVE(5, "Nháy theo nhạc xe"),
-    CUSTOM_PRESET(6, "Chiếu hoạt ảnh Character");
+    CUSTOM_PRESET(6, "Chiếu hoạt ảnh Character"),
+    MARQUEE_TEXT(7, "Chạy chữ LED");
 
     companion object {
         fun fromCode(code: Int): LedMode = entries.firstOrNull { it.code == code } ?: STATIC_COLOR
@@ -28,5 +29,6 @@ data class LedControlState(
     val currentMode: LedMode = LedMode.STATIC_COLOR,
     val speed: Int = 65,            // 1 - 100
     val sensitivity: Int = 75,      // 1 - 100
-    val currentColor: RgbColor = RgbColor(0, 200, 255)
+    val currentColor: RgbColor = RgbColor(0, 200, 255),
+    val freeHeap: Int = 0           // Free heap từ telemetry định kỳ
 )

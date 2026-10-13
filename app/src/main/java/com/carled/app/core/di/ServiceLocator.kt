@@ -11,16 +11,8 @@ import com.carled.app.data.repository.ProductRepositoryImpl
 import com.carled.app.domain.repository.AuthRepository
 import com.carled.app.domain.repository.BleDeviceRepository
 import com.carled.app.domain.repository.ProductRepository
+import com.carled.app.domain.usecase.ble.*
 import com.carled.app.domain.usecase.auth.LoginUseCase
-import com.carled.app.domain.usecase.ble.BleUseCases
-import com.carled.app.domain.usecase.ble.ConnectDeviceUseCase
-import com.carled.app.domain.usecase.ble.DisconnectDeviceUseCase
-import com.carled.app.domain.usecase.ble.ScanDevicesUseCase
-import com.carled.app.domain.usecase.ble.SendBrightnessCommandUseCase
-import com.carled.app.domain.usecase.ble.SendColorCommandUseCase
-import com.carled.app.domain.usecase.ble.SendModeCommandUseCase
-import com.carled.app.domain.usecase.ble.SendPowerCommandUseCase
-import com.carled.app.domain.usecase.ble.StopScanUseCase
 
 /**
  * ServiceLocator quản lý phụ thuộc (Dependency Injection) độc lập, gọn nhẹ.
@@ -63,14 +55,29 @@ object ServiceLocator {
 
     val bleUseCases: BleUseCases by lazy {
         BleUseCases(
-            scanDevices = ScanDevicesUseCase(bleDeviceRepository),
-            stopScan = StopScanUseCase(bleDeviceRepository),
-            connectDevice = ConnectDeviceUseCase(bleDeviceRepository),
-            disconnectDevice = DisconnectDeviceUseCase(bleDeviceRepository),
-            sendColorCommand = SendColorCommandUseCase(bleDeviceRepository),
-            sendModeCommand = SendModeCommandUseCase(bleDeviceRepository),
-            sendPowerCommand = SendPowerCommandUseCase(bleDeviceRepository),
-            sendBrightnessCommand = SendBrightnessCommandUseCase(bleDeviceRepository)
+            // Scan / Connect
+            scanDevices          = ScanDevicesUseCase(bleDeviceRepository),
+            stopScan             = StopScanUseCase(bleDeviceRepository),
+            connectDevice        = ConnectDeviceUseCase(bleDeviceRepository),
+            disconnectDevice     = DisconnectDeviceUseCase(bleDeviceRepository),
+            // Basic LED
+            sendColorCommand     = SendColorCommandUseCase(bleDeviceRepository),
+            sendModeCommand      = SendModeCommandUseCase(bleDeviceRepository),
+            sendPowerCommand     = SendPowerCommandUseCase(bleDeviceRepository),
+            sendBrightnessCommand = SendBrightnessCommandUseCase(bleDeviceRepository),
+            sendSensitivityCommand = SendSensitivityCommandUseCase(bleDeviceRepository),
+            // Advanced features
+            sendMarquee          = SendMarqueeUseCase(bleDeviceRepository),
+            sendWifiConfig       = SendWifiConfigUseCase(bleDeviceRepository),
+            clearCanvas          = ClearCanvasUseCase(bleDeviceRepository),
+            reloadProjection     = ReloadProjectionUseCase(bleDeviceRepository),
+            uploadProjection     = UploadProjectionUseCase(bleDeviceRepository),
+            // Telemetry
+            getTelemetryStatus   = GetTelemetryStatusUseCase(bleDeviceRepository),
+            getTelemetryEvent    = GetTelemetryEventUseCase(bleDeviceRepository),
+            // Canvas draw
+            sendSinglePixel      = SendSinglePixelUseCase(bleDeviceRepository),
+            sendBatchDraw        = SendBatchDrawUseCase(bleDeviceRepository)
         )
     }
 
