@@ -63,3 +63,4 @@ mobile/
 - [ARCHITECTURE.md](ARCHITECTURE.md): Xem sơ đồ luồng dữ liệu 1 chiều (UDF) và hướng dẫn viết thêm UseCase/ViewModel mới.
 - `D:\SEP\IoT-Device\docs\android_ble_guide.md`: Cẩm nang tối ưu Bluetooth BLE trên Android.
 - `D:\SEP\IoT-Device\docs\api_protocol.md`: Đặc tả định dạng khung nhị phân và JSON.
+2
