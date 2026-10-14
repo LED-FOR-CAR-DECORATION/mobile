@@ -325,6 +325,13 @@ class CarLedBleManager(private val context: Context) {
                     "wifi_connecting"    -> TelemetryEvent.WifiConnecting(
                         ssid = obj.optString("ssid", "")
                     )
+                    "wifi_connected"     -> TelemetryEvent.WifiConnected(
+                        ip = obj.optString("ip", "")
+                    )
+                    "wifi_disconnected"  -> TelemetryEvent.WifiDisconnected
+                    "emergency_stop"     -> TelemetryEvent.EmergencyStop(
+                        active = obj.optBoolean("active", true)
+                    )
                     "projection_reloaded" -> TelemetryEvent.ProjectionReloaded(
                         mode = obj.optInt("mode", 6)
                     )
@@ -336,15 +343,19 @@ class CarLedBleManager(private val context: Context) {
             } else {
                 // ── Periodic status telemetry ──
                 val colorObj = obj.optJSONObject("color")
+                val isEstop = obj.optBoolean("emergency_stop", false)
+                val ip = obj.optString("ip", "")
                 _telemetryStatus.value = DeviceTelemetryStatus(
-                    power      = obj.optBoolean("power", false),
-                    brightness = obj.optInt("brightness", 180),
-                    mode       = obj.optInt("mode", 0),
-                    speed      = obj.optInt("speed", 50),
-                    r          = colorObj?.optInt("r", 0) ?: 0,
-                    g          = colorObj?.optInt("g", 150) ?: 150,
-                    b          = colorObj?.optInt("b", 255) ?: 255,
-                    freeHeap   = obj.optInt("free_heap", 0)
+                    power           = obj.optBoolean("power", false),
+                    brightness      = obj.optInt("brightness", 180),
+                    mode            = obj.optInt("mode", 0),
+                    speed           = obj.optInt("speed", 50),
+                    r               = colorObj?.optInt("r", 0) ?: 0,
+                    g               = colorObj?.optInt("g", 150) ?: 150,
+                    b               = colorObj?.optInt("b", 255) ?: 255,
+                    freeHeap        = obj.optInt("free_heap", 0),
+                    isEmergencyStop = isEstop,
+                    wifiIp          = ip
                 )
             }
         }.onFailure {

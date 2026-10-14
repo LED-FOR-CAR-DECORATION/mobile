@@ -24,6 +24,15 @@ sealed class TelemetryEvent {
     /** ESP32 đang kết nối WiFi đến SSID chỉ định */
     data class WifiConnecting(val ssid: String) : TelemetryEvent()
 
+    /** ESP32 đã kết nối WiFi thành công và có địa chỉ IP */
+    data class WifiConnected(val ip: String) : TelemetryEvent()
+
+    /** ESP32 bị mất kết nối WiFi */
+    object WifiDisconnected : TelemetryEvent()
+
+    /** Cảnh báo nút dừng khẩn cấp (E-Stop) */
+    data class EmergencyStop(val active: Boolean) : TelemetryEvent()
+
     /** Projection đã được reload thành công từ Flash SPIFFS */
     data class ProjectionReloaded(val mode: Int) : TelemetryEvent()
 
@@ -45,5 +54,7 @@ data class DeviceTelemetryStatus(
     val r: Int = 0,
     val g: Int = 150,
     val b: Int = 255,
-    val freeHeap: Int = 0
+    val freeHeap: Int = 0,
+    val isEmergencyStop: Boolean = false,
+    val wifiIp: String = ""
 )

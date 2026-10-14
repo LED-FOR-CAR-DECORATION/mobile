@@ -116,7 +116,7 @@ class BleDeviceRepositoryImpl(
         )
         delay(200)
 
-        val chunkSize = 240
+        val chunkSize = 128
         var chunkIndex = 0
         var offset = 0
         while (offset < rgb565Data.size) {
@@ -126,7 +126,7 @@ class BleDeviceRepositoryImpl(
                 BleProtocolHelper.buildProjectionChunkFrame(chunkIndex, chunk),
                 throttled = false
             )
-            delay(30) // Đủ thời gian cho BLE stack xử lý
+            delay(25) // Tối ưu BLE throughput đồng bộ với ble_image_importer.html
             offset = end
             chunkIndex++
         }

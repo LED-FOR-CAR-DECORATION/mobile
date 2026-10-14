@@ -29,6 +29,16 @@ class ControlViewModel(
                 _uiState.update { it.copy(connectionState = conn) }
             }
         }
+        viewModelScope.launch {
+            bleUseCases.getTelemetryStatus().collect { status ->
+                _uiState.update { it.copy(telemetryStatus = status) }
+            }
+        }
+        viewModelScope.launch {
+            bleUseCases.getTelemetryEvent().collect { event ->
+                _uiState.update { it.copy(lastEvent = event) }
+            }
+        }
     }
 
     fun togglePower() {
@@ -78,6 +88,23 @@ class ControlViewModel(
         }
         viewModelScope.launch {
             bleUseCases.sendModeCommand(mode, clamped)
+        }
+    }
+
+    fun setSensitivity(sens: Int) {
+        val clamped = sens.coerceIn(1, 100)
+        _uiState.update {
+            it.copy(ledState = it.ledState.copy(sensitivity = clamped))
+        }
+        viewModelScope.launch {
+            bleUseCases.sendSensitivityCommand(clamped)
+        }
+    }
+
+    fun sendWifiConfig(ssid: String, pass: String) {
+        viewModelScope.launch {
+            bleUseCases.sendWifiConfig(ssid, pass)
+            _uiState.update { it.copy(feedbackMessage = "Đang gửi cấu hình Wi-Fi tới ESP32...") }
         }
     }
 }

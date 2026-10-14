@@ -7,15 +7,14 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -50,7 +49,7 @@ fun UploadScreen(
     // Auto-clear feedback
     LaunchedEffect(uiState.feedbackMessage) {
         if (uiState.feedbackMessage != null && !uiState.isUploading) {
-            kotlinx.coroutines.delay(5000)
+            kotlinx.coroutines.delay(6000)
             viewModel.clearFeedback()
         }
     }
@@ -60,18 +59,18 @@ fun UploadScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Upload Ảnh LED", fontWeight = FontWeight.Bold, color = TextPrimary)
-                        Text("Nạp ảnh lên Flash SPIFFS", color = TextSecondary, fontSize = 12.sp)
+                        Text("Nạp & Chiếu Ảnh Pixel Art", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 17.sp)
+                        Text("Ma trận 64×32 • Chuyển đổi RGB565 Little-Endian", color = DivoomTextMuted, fontSize = 11.sp)
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.reloadProjection() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Reload từ Flash", tint = PrimaryCyan)
+                        Icon(Icons.Default.Refresh, contentDescription = "Reload từ Flash", tint = DivoomGold)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
@@ -83,184 +82,234 @@ fun UploadScreen(
             modifier = modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 14.dp)
                 .verticalScroll(rememberScrollState())
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // ── Telemetry Event Status Card ──
-            val (eventColor, eventBg) = when (uiState.uploadStatus) {
-                UploadStatus.Complete  -> NeonGreen to NeonGreen.copy(alpha = 0.12f)
-                UploadStatus.Error     -> ErrorRed to ErrorRed.copy(alpha = 0.12f)
-                UploadStatus.Starting  -> PrimaryCyan to PrimaryCyan.copy(alpha = 0.12f)
-                UploadStatus.Uploading -> AccentPurple to AccentPurple.copy(alpha = 0.12f)
-                UploadStatus.Idle      -> TextSecondary to SurfaceDark
+            // ── Chọn ảnh từ thiết bị ──
+            OutlinedButton(
+                onClick = { imagePickerLauncher.launch("image/*") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryCyan),
+                border = BorderStroke(1.dp, PrimaryCyan),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, tint = PrimaryCyan)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (uiState.selectedImageUri != null) "📁 Đổi Ảnh Khác (JPG / PNG / GIF)" else "📁 Chọn Ảnh Từ Thiết Bị (JPG / PNG / GIF)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
             }
 
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ── 64×32 Live Pixel Preview Canvas ──
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(eventBg)
-                    .border(1.dp, eventColor.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                    .padding(14.dp)
+                    .aspectRatio(2f) // 64:32 = 2:1
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color.Black)
+                    .border(1.5.dp, DivoomBorder, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
             ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(eventColor)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = when (uiState.uploadStatus) {
-                                UploadStatus.Idle      -> "Chờ chọn ảnh để upload"
-                                UploadStatus.Starting  -> "ESP32 đang chuẩn bị nhận..."
-                                UploadStatus.Uploading -> "Đang truyền dữ liệu BLE..."
-                                UploadStatus.Complete  -> "Upload hoàn tất thành công ✓"
-                                UploadStatus.Error     -> "Upload thất bại"
-                            },
-                            color = eventColor,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
+                val bitmap = uiState.previewBitmap
+                if (bitmap != null) {
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "Preview ảnh LED 64×32",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.FillBounds
+                    )
+                    // Badge góc dưới
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black.copy(alpha = 0.7f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text("64 × 32 px • RGB565", color = DivoomGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
-                    if (uiState.feedbackMessage != null) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(uiState.feedbackMessage!!, color = eventColor.copy(alpha = 0.8f), fontSize = 12.sp)
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Image, contentDescription = null, tint = DivoomTextMuted, modifier = Modifier.size(44.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Chưa có ảnh được chọn", color = DivoomTextMuted, fontSize = 13.sp)
+                        Text("Hỗ trợ JPG, PNG, GIF, WebP", color = DivoomTextMuted.copy(alpha = 0.6f), fontSize = 11.sp)
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ── Progress Bar (khi đang upload) ──
-            if (uiState.isUploading || uiState.uploadStatus == UploadStatus.Starting) {
-                Text("TIẾN TRÌNH UPLOAD", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(6.dp))
+            // ── Kiểu Khung Hình (FitMode: Cover | Contain | Stretch) ──
+            Text("KIỂU KHUNG HÌNH (CROP / FIT)", color = DivoomTextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                FitMode.values().forEach { mode ->
+                    val isSelected = uiState.fitMode == mode
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) PrimaryCyan else DivoomCard)
+                            .border(1.dp, if (isSelected) PrimaryCyan else DivoomBorder, RoundedCornerShape(8.dp))
+                            .clickable { viewModel.setFitMode(mode) }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = when (mode) {
+                                FitMode.STRETCH -> "Kéo dãn"
+                                FitMode.COVER   -> "Cắt vừa 2:1"
+                                FitMode.CONTAIN -> "Giữ tỉ lệ"
+                            },
+                            color = if (isSelected) DarkBackground else Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ── Thuật toán Dithering (Floyd-Steinberg) ──
+            Text("THUẬT TOÁN DITHERING", color = DivoomTextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                DitherMode.values().forEach { mode ->
+                    val isSelected = uiState.ditherMode == mode
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) DivoomGold else DivoomCard)
+                            .border(1.dp, if (isSelected) DivoomGold else DivoomBorder, RoundedCornerShape(8.dp))
+                            .clickable { viewModel.setDitherMode(mode) }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = when (mode) {
+                                DitherMode.NONE            -> "Không Dither (Mịn)"
+                                DitherMode.FLOYD_STEINBERG -> "Floyd-Steinberg (Pixel Art)"
+                            },
+                            color = if (isSelected) DarkBackground else Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ── Độ Sáng Ảnh (Brightness: 40%..220%) ──
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("ĐỘ SÁNG ẢNH", color = DivoomTextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("${uiState.brightnessPercent}%", color = DivoomGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = uiState.brightnessPercent.toFloat(),
+                onValueChange = { viewModel.setBrightness(it.toInt()) },
+                valueRange = 40f..220f,
+                colors = SliderDefaults.colors(thumbColor = DivoomGold, activeTrackColor = DivoomGold)
+            )
+
+            // ── Độ Tương Phản (Contrast: 40%..220%) ──
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("ĐỘ TƯƠNG PHẢN", color = DivoomTextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("${uiState.contrastPercent}%", color = PrimaryCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = uiState.contrastPercent.toFloat(),
+                onValueChange = { viewModel.setContrast(it.toInt()) },
+                valueRange = 40f..220f,
+                colors = SliderDefaults.colors(thumbColor = PrimaryCyan, activeTrackColor = PrimaryCyan)
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ── Feedback Toast / Telemetry Status ──
+            if (uiState.feedbackMessage != null) {
+                val isSuccess = uiState.uploadStatus == UploadStatus.Complete
+                val isErr = uiState.uploadStatus == UploadStatus.Error
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = when {
+                            isSuccess -> NeonGreen.copy(alpha = 0.15f)
+                            isErr     -> DivoomDanger.copy(alpha = 0.15f)
+                            else      -> PrimaryCyan.copy(alpha = 0.15f)
+                        }
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = uiState.feedbackMessage!!,
+                        color = when {
+                            isSuccess -> NeonGreen
+                            isErr     -> DivoomDanger
+                            else      -> PrimaryCyan
+                        },
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            // ── Thanh tiến trình nạp (Progress bar) ──
+            if (uiState.isUploading) {
                 LinearProgressIndicator(
                     progress = { uiState.uploadProgress },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(8.dp)
                         .clip(RoundedCornerShape(4.dp)),
-                    color = PrimaryCyan,
-                    trackColor = SurfaceLightDark
+                    color = DivoomGold,
+                    trackColor = DivoomCard
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "${(uiState.uploadProgress * 100).toInt()}% • ${uiState.uploadExpectedBytes} bytes",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
-            // ── Image Preview ──
-            Text("ẢNH PREVIEW (64×32 LED)", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(2f) // 64:32 = 2:1
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.Black)
-                    .border(1.dp, SurfaceLightDark, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                val bitmap = uiState.previewBitmap as? Bitmap
-                if (bitmap != null) {
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = "Preview ảnh LED",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.FillBounds
-                    )
-                    // Overlay thông tin
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(6.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color.Black.copy(alpha = 0.6f))
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                    ) {
-                        Text("64 × 32 px", color = Color.White, fontSize = 10.sp)
-                    }
-                } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Image, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(40.dp))
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Chưa có ảnh được chọn", color = TextSecondary, fontSize = 13.sp)
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // ── Specs card ──
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(SurfaceDark)
-                    .padding(14.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("📐 Yêu cầu ảnh:", color = PrimaryCyan, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Text("• Kích thước: 64 × 32 pixel (tự động scale)", color = TextSecondary, fontSize = 12.sp)
-                    Text("• Định dạng xuất: RGB565 = 4096 bytes", color = TextSecondary, fontSize = 12.sp)
-                    Text("• Hỗ trợ: JPG, PNG, WebP", color = TextSecondary, fontSize = 12.sp)
-                    Text("• Thời gian upload: ~5 giây qua BLE", color = TextSecondary, fontSize = 12.sp)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // ── Buttons ──
-            OutlinedButton(
-                onClick = { imagePickerLauncher.launch("image/*") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryCyan),
-                border = BorderStroke(1.dp, PrimaryCyan),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.Image, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Chọn Ảnh từ Thư viện", fontWeight = FontWeight.Bold)
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
+            // ── Nút Chiếu Lên LED Qua Bluetooth BLE ──
             Button(
                 onClick = { viewModel.startUpload() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
-                enabled = uiState.selectedImageUri != null && !uiState.isUploading,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = AccentPurple,
-                    disabledContainerColor = SurfaceLightDark
-                ),
+                enabled = uiState.previewBitmap != null && !uiState.isUploading,
+                colors = ButtonDefaults.buttonColors(containerColor = DivoomGold),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 if (uiState.isUploading) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
-                        color = Color.White,
+                        color = DarkBackground,
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Đang upload...", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Đang nạp ảnh lên xe...", color = DarkBackground, fontWeight = FontWeight.Bold)
                 } else {
-                    Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color.White)
+                    Icon(Icons.Default.CloudUpload, contentDescription = null, tint = DarkBackground)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Upload lên ESP32", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("🚀 Chiếu Lên LED Qua Bluetooth BLE", color = DarkBackground, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
 
@@ -268,3 +317,4 @@ fun UploadScreen(
         }
     }
 }
+

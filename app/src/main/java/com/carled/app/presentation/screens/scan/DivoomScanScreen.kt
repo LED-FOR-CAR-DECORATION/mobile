@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -17,7 +19,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.carled.app.domain.model.BleDeviceModel
@@ -129,11 +134,12 @@ fun DivoomScanScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp)
-            ) {
+            if (selectedTab == 0) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp)
+                ) {
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Hiển thị thông báo lỗi nếu Bluetooth tắt hoặc chưa cấp quyền
@@ -391,9 +397,15 @@ fun DivoomScanScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
             }
+        } else {
+            WifiProvisioningSection(
+                uiState = uiState,
+                onSendWifi = { ssid, pass -> viewModel.sendWifiConfig(ssid, pass) }
+            )
+        }
 
-            // 3. Modal tìm kiếm Bluetooth (Spinner) khi đang quét VÀ chưa tìm thấy thiết bị nào (Ảnh 2 Divoom)
-            if (uiState.isScanning && uiState.devices.isEmpty()) {
+        // 3. Modal tìm kiếm Bluetooth (Spinner) khi đang quét VÀ chưa tìm thấy thiết bị nào (Ảnh 2 Divoom)
+        if (selectedTab == 0 && uiState.isScanning && uiState.devices.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -505,3 +517,289 @@ fun DivoomScanScreen(
         }
     }
 }
+
+@Composable
+private fun WifiProvisioningSection(
+    uiState: ScanUiState,
+    onSendWifi: (String, String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var ssid by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
+    val isBleConnected = uiState.connectionState is ConnectionState.Connected
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Cảnh báo nếu BLE chưa kết nối
+        if (!isBleConnected) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = DivoomDanger.copy(alpha = 0.2f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, DivoomDanger.copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.BluetoothDisabled,
+                        contentDescription = null,
+                        tint = DivoomDanger,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        "Chưa kết nối Bluetooth với ESP32! Hãy chuyển sang tab Bluetooth và kết nối thiết bị trước để cấp Wi-Fi.",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+            }
+        }
+
+        // Card nhập thông tin Wi-Fi
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = DivoomCard),
+            border = androidx.compose.foundation.BorderStroke(1.dp, DivoomBorder)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DivoomGold.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Wifi,
+                            contentDescription = null,
+                            tint = DivoomGold,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            "Cấp Wi-Fi Cho ESP32 Qua BLE",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            "Nhập Wi-Fi xe hơi hoặc Hotspot điện thoại",
+                            color = DivoomTextMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text("Tên Wi-Fi (SSID)", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = ssid,
+                    onValueChange = { ssid = it },
+                    placeholder = { Text("Ví dụ: Car_WiFi / Phone_Hotspot", color = DivoomTextMuted, fontSize = 13.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingIcon = {
+                        Icon(Icons.Default.Wifi, contentDescription = null, tint = DivoomGold)
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = DivoomGold,
+                        unfocusedBorderColor = DivoomBorder,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        cursorColor = DivoomGold
+                    ),
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text("Mật Khẩu Wi-Fi (Password)", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    placeholder = { Text("Nhập mật khẩu Wi-Fi", color = DivoomTextMuted, fontSize = 13.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingIcon = {
+                        Icon(Icons.Default.Lock, contentDescription = null, tint = DivoomGold)
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = "Ẩn/hiện mật khẩu",
+                                tint = DivoomTextMuted
+                            )
+                        }
+                    },
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = DivoomGold,
+                        unfocusedBorderColor = DivoomBorder,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        cursorColor = DivoomGold
+                    ),
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Button(
+                    onClick = { onSendWifi(ssid, password) },
+                    enabled = isBleConnected && ssid.isNotBlank() && !uiState.isSendingWifi,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = DivoomGold,
+                        disabledContainerColor = DivoomCardSecondary
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    if (uiState.isSendingWifi) {
+                        CircularProgressIndicator(
+                            color = DarkBackground,
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Đang Gửi Cấu Hình...", color = DarkBackground, fontWeight = FontWeight.Bold)
+                    } else {
+                        Icon(Icons.Default.Send, contentDescription = null, tint = DarkBackground, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Gửi Cấu Hình Wi-Fi Tới ESP32 (BLE)",
+                            color = DarkBackground,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // Phản hồi trạng thái
+        if (uiState.wifiMessage != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = DivoomCardSecondary)
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        tint = DivoomGold,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        uiState.wifiMessage,
+                        color = Color.White,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
+
+        // Hiển thị IP & Nút mở Web Portal nếu ESP32 đã kết nối
+        if (!uiState.wifiConnectedIp.isNullOrBlank()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = NeonGreen.copy(alpha = 0.15f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, NeonGreen.copy(alpha = 0.6f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = NeonGreen,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            "ESP32 Đã Kết Nối Wi-Fi Thành Công!",
+                            color = NeonGreen,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        "Địa chỉ IP thiết bị: ${uiState.wifiConnectedIp}",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Bạn có thể mở Web Portal để upload ảnh trực tiếp qua Wi-Fi nội bộ xe hoặc cập nhật OTA firmware.",
+                        color = DivoomTextMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Button(
+                        onClick = {
+                            runCatching {
+                                uriHandler.openUri("http://${uiState.wifiConnectedIp}")
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = NeonGreen),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.OpenInBrowser,
+                            contentDescription = null,
+                            tint = DarkBackground,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Mở Web Portal (${uiState.wifiConnectedIp})",
+                            color = DarkBackground,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+

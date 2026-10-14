@@ -69,13 +69,13 @@ object BleProtocolHelper {
      * [0xAA, 0x14, count, x0,y0,r0,g0,b0, ..., xN,yN,rN,gN,bN, checksum, 0x55]
      */
     fun buildBatchDrawFrame(points: List<TouchPoint>): ByteArray {
-        val count = points.size.coerceAtMost(15)
+        val count = points.size.coerceAtMost(12)
         val payload = ByteArray(3 + count * 5 + 2)
         payload[0] = HEADER
         payload[1] = CMD_DRAW_BATCH
         payload[2] = count.toByte()
 
-        var csum = (CMD_DRAW_BATCH.toInt() xor count).toByte()
+        var csum = (CMD_DRAW_BATCH.toInt() and 0xFF) xor (count and 0xFF)
         for (i in 0 until count) {
             val pt = points[i]
             val offset = 3 + i * 5
@@ -85,10 +85,10 @@ object BleProtocolHelper {
             payload[offset + 3] = (pt.g and 0xFF).toByte()
             payload[offset + 4] = (pt.b and 0xFF).toByte()
             for (k in 0..4) {
-                csum = (csum.toInt() xor payload[offset + k].toInt()).toByte()
+                csum = csum xor (payload[offset + k].toInt() and 0xFF)
             }
         }
-        payload[3 + count * 5]     = csum
+        payload[3 + count * 5]     = (csum and 0xFF).toByte()
         payload[3 + count * 5 + 1] = TAIL
         return payload
     }

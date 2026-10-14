@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.carled.app.domain.model.BleDeviceModel
 import com.carled.app.domain.model.ConnectionState
 import com.carled.app.domain.usecase.ble.BleUseCases
+import com.carled.app.domain.model.TelemetryEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,6 +39,50 @@ class ScanViewModel(
                 }
             }
         }
+
+        // Lắng nghe các event Wi-Fi từ ESP32 qua BLE
+        viewModelScope.launch {
+            bleUseCases.getTelemetryEvent().collect { event ->
+                when (event) {
+                    is TelemetryEvent.WifiConnected -> {
+                        _uiState.update {
+                            it.copy(
+                                wifiConnectedIp = event.ip,
+                                isSendingWifi = false,
+                                wifiMessage = "ESP32 đã kết nối Wi-Fi thành công! IP: ${event.ip}"
+                            )
+                        }
+                    }
+                    is TelemetryEvent.WifiDisconnected -> {
+                        _uiState.update {
+                            it.copy(
+                                wifiConnectedIp = null,
+                                isSendingWifi = false,
+                                wifiMessage = "ESP32 đã ngắt kết nối Wi-Fi"
+                            )
+                        }
+                    }
+                    is TelemetryEvent.WifiConnecting -> {
+                        _uiState.update {
+                            it.copy(
+                                isSendingWifi = true,
+                                wifiMessage = "ESP32 đang kết nối vào ${event.ssid}..."
+                            )
+                        }
+                    }
+                    else -> {}
+                }
+            }
+        }
+
+        // Cập nhật IP từ telemetry định kỳ nếu đã kết nối trước đó
+        viewModelScope.launch {
+            bleUseCases.getTelemetryStatus().collect { status ->
+                if (status.wifiIp.isNotBlank() && status.wifiIp != "0.0.0.0") {
+                    _uiState.update { it.copy(wifiConnectedIp = status.wifiIp) }
+                }
+            }
+        }
     }
 
     fun startScan() {
@@ -56,5 +101,25 @@ class ScanViewModel(
 
     fun disconnectDevice() {
         bleUseCases.disconnectDevice()
+    }
+
+    fun sendWifiConfig(ssid: String, pass: String) {
+        if (ssid.isBlank()) {
+            _uiState.update { it.copy(wifiMessage = "Vui lòng nhập tên Wi-Fi (SSID)") }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                isSendingWifi = true,
+                wifiMessage = "Đang gửi thông tin Wi-Fi tới ESP32..."
+            )
+        }
+        viewModelScope.launch {
+            bleUseCases.sendWifiConfig(ssid.trim(), pass)
+        }
+    }
+
+    fun clearWifiMessage() {
+        _uiState.update { it.copy(wifiMessage = null) }
     }
 }

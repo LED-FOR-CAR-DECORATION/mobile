@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.carled.app.domain.model.ConnectionState
 import com.carled.app.domain.model.LedMode
 import com.carled.app.domain.model.RgbColor
+import com.carled.app.domain.model.TelemetryEvent
 import com.carled.app.presentation.screens.control.ControlViewModel
 import com.carled.app.presentation.theme.*
 
@@ -65,7 +66,46 @@ fun DivoomDashboardScreen(
             .padding(horizontal = 16.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        Spacer(modifier = Modifier.height(12.dp))
+        val isEstopActive = uiState.telemetryStatus?.isEmergencyStop == true ||
+            (uiState.lastEvent as? TelemetryEvent.EmergencyStop)?.active == true
+
+        if (isEstopActive) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                colors = CardDefaults.cardColors(containerColor = DivoomDanger),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = "E-Stop Alert",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "🚨 CẢNH BÁO: NÚT DỪNG KHẨN CẤP (E-STOP) ĐANG BẬT!",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Bảng LED đã ngắt hiệu ứng và chuyển sang chế độ an toàn. Nhấn nhả nút E-Stop trên xe để khôi phục.",
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            }
+        }
 
         // 1. Top Banner Carousel (Quảng cáo phong cách Divoom)
         TopBannerCarousel(onBannerClick = onOpenStore)
@@ -137,9 +177,12 @@ fun DivoomDashboardScreen(
                                 color = Color.White
                             )
                             Text(
-                                text = if (led.isPowerOn) "Đang hoạt động • ${led.currentMode.displayName}" else "Thiết bị đang tắt",
+                                text = if (isEstopActive) "⚠️ DỪNG KHẨN CẤP (E-STOP)"
+                                    else if (led.isPowerOn) "Đang hoạt động • ${led.currentMode.displayName}"
+                                    else "Thiết bị đang tắt",
                                 fontSize = 12.sp,
-                                color = DivoomTextMuted
+                                color = if (isEstopActive) DivoomDanger else DivoomTextMuted,
+                                fontWeight = if (isEstopActive) FontWeight.Bold else FontWeight.Normal
                             )
                         }
                     }
@@ -193,6 +236,35 @@ fun DivoomDashboardScreen(
                         tint = Color.White,
                         modifier = Modifier.size(22.dp)
                     )
+                }
+
+                // Thanh thông số Telemetry thời gian thực từ ESP32
+                if (connectionState is ConnectionState.Connected && uiState.telemetryStatus != null) {
+                    val status = uiState.telemetryStatus!!
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Divider(color = DivoomBorder, thickness = 0.5.dp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "RAM: ${status.freeHeap / 1024} KB",
+                            color = DivoomTextMuted,
+                            fontSize = 11.sp
+                        )
+                        Text(
+                            text = if (status.wifiIp.isNotBlank()) "Wi-Fi: ${status.wifiIp}" else "Wi-Fi: BLE Only",
+                            color = if (status.wifiIp.isNotBlank()) NeonGreen else DivoomTextMuted,
+                            fontSize = 11.sp
+                        )
+                        Text(
+                            text = "Tốc độ: ${led.speed}%",
+                            color = DivoomTextMuted,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             }
         }

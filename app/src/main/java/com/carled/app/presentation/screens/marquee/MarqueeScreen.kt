@@ -1,5 +1,7 @@
 package com.carled.app.presentation.screens.marquee
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,18 +10,23 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.carled.app.presentation.theme.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,11 +37,48 @@ fun MarqueeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Hiển thị feedback tạm thời
+    // Auto-clear feedback sau 4 giây
     LaunchedEffect(uiState.feedbackMessage) {
         if (uiState.feedbackMessage != null) {
-            kotlinx.coroutines.delay(3000)
+            delay(4000)
             viewModel.clearFeedback()
+        }
+    }
+
+    // Animation cursor cho Canvas Preview mô phỏng 64x32
+    var previewCursorX by remember { mutableFloatStateOf(64f) }
+    var blinkVisible by remember { mutableStateOf(true) }
+    var rainbowHue by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(uiState.speed, uiState.scrollMode, uiState.text) {
+        val stepDelay = (85 - (uiState.speed * 0.7f)).toLong().coerceAtLeast(15L)
+        val charWidth = if (uiState.size == 2) 12f else 6f
+        val cleanText = MarqueeViewModel.removeVietnameseTones(uiState.text.ifBlank { "CAR LED" })
+        val totalWidth = cleanText.length * charWidth
+
+        while (isActive) {
+            delay(stepDelay)
+            if (uiState.scrollMode == "scroll_left") {
+                previewCursorX -= 1f
+                if (previewCursorX < -totalWidth) {
+                    previewCursorX = 64f
+                }
+            } else {
+                previewCursorX = ((64f - totalWidth) / 2f).coerceAtLeast(2f)
+            }
+            rainbowHue = (rainbowHue + 3f) % 360f
+        }
+    }
+
+    // Nhấp nháy loop nếu mode = blink
+    LaunchedEffect(uiState.scrollMode) {
+        if (uiState.scrollMode == "blink") {
+            while (isActive) {
+                delay(350)
+                blinkVisible = !blinkVisible
+            }
+        } else {
+            blinkVisible = true
         }
     }
 
@@ -43,13 +87,13 @@ fun MarqueeScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Chạy Chữ LED", fontWeight = FontWeight.Bold, color = TextPrimary)
-                        Text("Marquee Text", color = TextSecondary, fontSize = 12.sp)
+                        Text("Bảng Chạy Chữ LED", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 17.sp)
+                        Text("Thông điệp & Cảnh báo xe hơi qua BLE", color = DivoomTextMuted, fontSize = 11.sp)
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
@@ -61,199 +105,293 @@ fun MarqueeScreen(
             modifier = modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 14.dp)
                 .verticalScroll(rememberScrollState())
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // ── Telemetry feedback card ──
-            if (uiState.lastEventText != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(NeonGreen.copy(alpha = 0.15f))
-                        .border(1.dp, NeonGreen.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("● ", color = NeonGreen, fontWeight = FontWeight.Bold)
-                    Text(
-                        "Đang phát: \"${uiState.lastEventText}\"",
-                        color = NeonGreen,
-                        fontSize = 13.sp
-                    )
+            // ── Live Animation Canvas Preview (Mô phỏng LED Matrix 64x32) ──
+            Text("MÔ PHỎNG HIỂN THỊ THỰC TẾ (64×32 LED)", color = DivoomTextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF05070E))
+                    .border(1.5.dp, DivoomGold.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+            ) {
+                val cleanText = MarqueeViewModel.removeVietnameseTones(uiState.text.ifBlank { "CAR LED" })
+                val charW = if (uiState.size == 2) 12f else 6f
+                val fontSizePx = if (uiState.size == 2) 13f else 8f
+                val fontY = if (uiState.size == 2) 20f else 18f
+
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val scaleX = size.width / 64f
+                    val scaleY = size.height / 32f
+
+                    if (blinkVisible) {
+                        drawIntoCanvas { canvas ->
+                            val paint = android.graphics.Paint().apply {
+                                isAntiAlias = false
+                                textSize = fontSizePx * scaleY
+                                typeface = android.graphics.Typeface.MONOSPACE
+                                isFakeBoldText = true
+                            }
+
+                            for (i in cleanText.indices) {
+                                val charX = (previewCursorX + i * charW) * scaleX
+                                if (charX > -charW * scaleX && charX < size.width) {
+                                    if (uiState.rainbow) {
+                                        val hue = (rainbowHue + i * 25f) % 360f
+                                        paint.color = android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))
+                                    } else {
+                                        paint.color = android.graphics.Color.rgb(uiState.r, uiState.g, uiState.b)
+                                    }
+                                    canvas.nativeCanvas.drawText(
+                                        cleanText[i].toString(),
+                                        charX,
+                                        fontY * scaleY,
+                                        paint
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Grid lines nhẹ
+                    val gridCol = Color.White.copy(alpha = 0.04f)
+                    for (x in 0..64 step 4) {
+                        drawLine(gridCol, Offset(x * scaleX, 0f), Offset(x * scaleX, size.height), strokeWidth = 0.5f)
+                    }
                 }
-                Spacer(modifier = Modifier.height(12.dp))
             }
 
-            // ── Text Input ──
-            Text("NỘI DUNG HIỂN THỊ", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ── Mẫu câu thông dụng trên xe hơi (Car Presets) ──
+            Text("MẪU CÂU THÔNG DỤNG TRÊN XE HƠI", color = DivoomTextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            val presets = listOf(
+                "🚗 Cảm Ơn" to "XIN CAM ON!",
+                "⚠️ Tập Lái" to "XE TAP LAI - XIN THONG CAM",
+                "🛑 Khoảng Cách" to "GIU KHOANG CACH AN TOAN",
+                "👋 Nhường Đường" to "XIN NHUONG DUONG",
+                "📞 SĐT Liên Hệ" to "LH: 0988 123 456",
+                "🎉 Bình An" to "CHUC VAN DAM BINH AN!"
+            )
+
+            // 2 hàng buttons
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                presets.chunked(3).forEach { rowItems ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        rowItems.forEach { (label, txt) ->
+                            Button(
+                                onClick = { viewModel.applyPreset(txt) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = DivoomCard),
+                                border = BorderStroke(1.dp, DivoomBorder),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp)
+                            ) {
+                                Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ── Nội dung hiển thị (Text Input) ──
+            Text("NỘI DUNG HIỂN THỊ", color = DivoomTextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(6.dp))
             OutlinedTextField(
                 value = uiState.text,
                 onValueChange = { viewModel.updateText(it) },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Nhập chữ chạy trên LED...", color = TextSecondary) },
+                placeholder = { Text("Nhập chữ chạy...", color = DivoomTextMuted) },
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PrimaryCyan,
-                    unfocusedBorderColor = SurfaceLightDark,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    cursorColor = PrimaryCyan,
-                    focusedContainerColor = SurfaceDark,
-                    unfocusedContainerColor = SurfaceDark
+                    focusedBorderColor = DivoomGold,
+                    unfocusedBorderColor = DivoomBorder,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedContainerColor = DivoomCard,
+                    unfocusedContainerColor = DivoomCard
                 ),
-                shape = RoundedCornerShape(12.dp),
-                maxLines = 3,
-                supportingText = {
-                    Text("* Ký tự tiếng Việt có dấu sẽ tự động được chuyển đổi", color = TextSecondary, fontSize = 11.sp)
-                }
+                shape = RoundedCornerShape(10.dp)
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // ── Scroll Mode ──
-            Text("CHẾ ĐỘ CUỘN", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("scroll_left" to "Cuộn trái", "static" to "Đứng yên", "blink" to "Nhấp nháy").forEach { (mode, label) ->
-                    val selected = uiState.scrollMode == mode
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (selected) PrimaryCyan else SurfaceDark)
-                            .border(1.dp, if (selected) PrimaryCyan else SurfaceLightDark, RoundedCornerShape(8.dp))
-                            .clickable { viewModel.updateScrollMode(mode) }
-                            .padding(horizontal = 14.dp, vertical = 9.dp)
-                    ) {
-                        Text(label, color = if (selected) DarkBackground else TextPrimary, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+            // ── Cỡ chữ & Kiểu hiệu ứng ──
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Cỡ chữ
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("CỠ CHỮ", color = DivoomTextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(1 to "Nhỏ (5×7)", 2 to "Lớn (10×14)").forEach { (s, lbl) ->
+                            val isSel = uiState.size == s
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSel) DivoomGold else DivoomCard)
+                                    .border(1.dp, if (isSel) DivoomGold else DivoomBorder, RoundedCornerShape(8.dp))
+                                    .clickable { viewModel.updateSize(s) }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(lbl, color = if (isSel) DarkBackground else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                // Kiểu hiệu ứng
+                Column(modifier = Modifier.weight(1.2f)) {
+                    Text("KIỂU HIỆU ỨNG", color = DivoomTextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("scroll_left" to "Cuộn", "static" to "Tĩnh", "blink" to "Chớp").forEach { (m, lbl) ->
+                            val isSel = uiState.scrollMode == m
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSel) PrimaryCyan else DivoomCard)
+                                    .border(1.dp, if (isSel) PrimaryCyan else DivoomBorder, RoundedCornerShape(8.dp))
+                                    .clickable { viewModel.updateScrollMode(m) }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(lbl, color = if (isSel) DarkBackground else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // ── Size ──
-            Text("CỠ CHỮ", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(1 to "Nhỏ (5×7px)", 2 to "Lớn (10×14px)").forEach { (s, label) ->
-                    val selected = uiState.size == s
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (selected) AccentPurple else SurfaceDark)
-                            .border(1.dp, if (selected) AccentPurple else SurfaceLightDark, RoundedCornerShape(8.dp))
-                            .clickable { viewModel.updateSize(s) }
-                            .padding(horizontal = 14.dp, vertical = 9.dp)
-                    ) {
-                        Text(label, color = if (selected) Color.White else TextPrimary, fontSize = 13.sp)
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // ── Speed ──
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("TỐC ĐỘ CUỘN", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Text("${uiState.speed}", color = PrimaryCyan, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            }
-            Slider(
-                value = uiState.speed.toFloat(),
-                onValueChange = { viewModel.updateSpeed(it.toInt()) },
-                valueRange = 1f..100f,
-                colors = SliderDefaults.colors(thumbColor = PrimaryCyan, activeTrackColor = PrimaryCyan, inactiveTrackColor = SurfaceLightDark)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // ── Rainbow Toggle ──
+            // ── Màu Sắc Chữ & Cầu Vồng ──
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("HIỆU ỨNG CẦU VỒNG", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Text("Chữ đổi màu 7 màu cầu vồng", color = TextSecondary, fontSize = 11.sp)
+                Text("MÀU SẮC CHỮ", color = DivoomTextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = uiState.rainbow,
+                        onCheckedChange = { viewModel.toggleRainbow() },
+                        colors = CheckboxDefaults.colors(checkedColor = DivoomGold)
+                    )
+                    Text("🌈 Chữ 7 màu (Rainbow)", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
-                Switch(
-                    checked = uiState.rainbow,
-                    onCheckedChange = { viewModel.toggleRainbow() },
-                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = PrimaryCyan)
-                )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // ── Màu chữ (nếu không rainbow) ──
             if (!uiState.rainbow) {
-                Text("MÀU CHỮ", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                val presetColors = listOf(
-                    Triple(255, 215, 0) to "Vàng",
+                Spacer(modifier = Modifier.height(4.dp))
+                val marqueePalette = listOf(
+                    Triple(255, 215, 0) to "Vàng Gold",
+                    Triple(255, 51, 102) to "Đỏ Neon",
+                    Triple(0, 210, 255) to "Cyan Ice",
+                    Triple(0, 240, 118) to "Xanh Lục",
                     Triple(255, 255, 255) to "Trắng",
-                    Triple(0, 200, 255) to "Cyan",
-                    Triple(255, 50, 50) to "Đỏ",
-                    Triple(50, 255, 100) to "Xanh lá",
-                    Triple(200, 100, 255) to "Tím"
+                    Triple(153, 0, 255) to "Tím"
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    presetColors.forEach { (rgb, name) ->
-                        val color = Color(rgb.first / 255f, rgb.second / 255f, rgb.third / 255f)
-                        val selected = uiState.r == rgb.first && uiState.g == rgb.second && uiState.b == rgb.third
+                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    marqueePalette.forEach { (rgb, _) ->
+                        val isSel = uiState.r == rgb.first && uiState.g == rgb.second && uiState.b == rgb.third
+                        val col = Color(rgb.first, rgb.second, rgb.third)
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(34.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(color)
-                                .border(2.dp, if (selected) Color.White else Color.Transparent, RoundedCornerShape(8.dp))
+                                .background(col)
+                                .border(
+                                    width = if (isSel) 2.5.dp else 1.dp,
+                                    color = if (isSel) Color.White else Color.Transparent,
+                                    shape = RoundedCornerShape(8.dp)
+                                )
                                 .clickable { viewModel.updateColor(rgb.first, rgb.second, rgb.third) }
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(20.dp))
             }
 
-            // ── Feedback Message ──
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ── Tốc Độ Cuộn (Slider) ──
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("TỐC ĐỘ CUỘN CHỮ", color = DivoomTextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("${uiState.speed}", color = DivoomGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = uiState.speed.toFloat(),
+                onValueChange = { viewModel.updateSpeed(it.toInt()) },
+                valueRange = 10f..100f,
+                colors = SliderDefaults.colors(thumbColor = DivoomGold, activeTrackColor = DivoomGold)
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // ── Feedback Banner ──
             if (uiState.feedbackMessage != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(NeonGreen.copy(alpha = 0.15f))
-                        .padding(12.dp)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = NeonGreen.copy(alpha = 0.15f)),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text(uiState.feedbackMessage!!, color = NeonGreen, fontSize = 13.sp)
+                    Text(
+                        text = uiState.feedbackMessage!!,
+                        color = NeonGreen,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(10.dp)
+                    )
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
             }
 
-            // ── Send Button ──
-            Button(
-                onClick = { viewModel.sendMarquee() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                enabled = !uiState.isSending,
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryCyan),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                if (uiState.isSending) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = DarkBackground,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Phát Chạy Chữ", color = DarkBackground, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            // ── Nút Phát & Dừng Chữ (Send & Stop Buttons) ──
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = { viewModel.sendMarquee() },
+                    modifier = Modifier
+                        .weight(2f)
+                        .height(52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = DivoomGold),
+                    shape = RoundedCornerShape(12.dp),
+                    enabled = !uiState.isSending
+                ) {
+                    if (uiState.isSending) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = DarkBackground, strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.Send, contentDescription = null, tint = DarkBackground)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("🚀 Bắn Chữ Lên Bảng LED", color = DarkBackground, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+
+                Button(
+                    onClick = { viewModel.stopMarquee() },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = DivoomCard),
+                    border = BorderStroke(1.dp, DivoomBorder),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Stop, contentDescription = null, tint = DivoomDanger)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Tắt chữ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
 
@@ -261,3 +399,4 @@ fun MarqueeScreen(
         }
     }
 }
+
