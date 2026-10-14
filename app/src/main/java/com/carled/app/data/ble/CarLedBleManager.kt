@@ -87,33 +87,32 @@ class CarLedBleManager(private val context: Context) {
     fun startScan() {
         val scanner = bluetoothAdapter?.bluetoothLeScanner
         if (scanner == null || bluetoothAdapter?.isEnabled != true) {
-            _connectionState.value = ConnectionState.Error("Bluetooth chưa được kích hoạt")
+            Log.w(TAG, "Bluetooth chưa được kích hoạt trên điện thoại")
+            _connectionState.value = ConnectionState.Error("Vui lòng bật Bluetooth trên điện thoại")
             return
         }
 
         _scannedDevices.value = emptyList()
         _connectionState.value = ConnectionState.Scanning
-
-        val scanFilter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(Constants.BLE_SERVICE_UUID))
-            .build()
+        Log.i(TAG, "Bắt đầu quét thiết bị BLE...")
 
         val scanSettings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
         try {
-            scanner.startScan(listOf(scanFilter), scanSettings, scanCallback)
+            // Quét không gò bó filter để không bị drop packet scan response của ESP32
+            scanner.startScan(null, scanSettings, scanCallback)
         } catch (e: Exception) {
             Log.e(TAG, "Không thể bắt đầu scan: ${e.message}")
             _connectionState.value = ConnectionState.Error("Lỗi khởi chạy quét: ${e.message}")
             return
         }
 
-        // Tự động dừng scan sau 10s để tránh scan throttling của Android
+        // Tự động dừng scan sau 15s để tránh scan throttling của Android
         scanJob?.cancel()
         scanJob = scope.launch {
-            delay(Constants.BLE_SCAN_TIMEOUT_MS)
+            delay(15000L)
             stopScan()
             if (_connectionState.value == ConnectionState.Scanning) {
                 _connectionState.value = ConnectionState.Disconnected
@@ -124,6 +123,7 @@ class CarLedBleManager(private val context: Context) {
     fun stopScan() {
         try {
             bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
+            Log.i(TAG, "Đã dừng quét BLE")
         } catch (e: Exception) {
             Log.e(TAG, "Lỗi dừng scan: ${e.message}")
         }
@@ -132,18 +132,46 @@ class CarLedBleManager(private val context: Context) {
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device
-            val deviceName = device.name ?: "Unknown Car LED"
+            val scanRecord = result.scanRecord
+
+            // Lấy tên từ ScanRecord trước (không cần quyền BLUETOOTH_CONNECT)
+            val advertisedName = scanRecord?.deviceName
+            val fallbackName = try { device.name } catch (e: SecurityException) { null }
+
+            val rawName = advertisedName ?: fallbackName
             val macAddress = device.address
             val rssi = result.rssi
+
+            // Bỏ qua các thiết bị không có tên và không phát UUID của CarLED để tránh rác danh sách
+            val hasServiceUuid = scanRecord?.serviceUuids?.any {
+                it.uuid == Constants.BLE_SERVICE_UUID
+            } == true
+
+            val isCarLed = (rawName?.contains(Constants.BLE_DEVICE_NAME_PREFIX, ignoreCase = true) == true)
+                    || (rawName?.contains("ESP32", ignoreCase = true) == true)
+                    || hasServiceUuid
+
+            // Đặt tên hiển thị thân thiện
+            val displayName = when {
+                !rawName.isNullOrBlank() -> rawName
+                hasServiceUuid -> "CarLED-Ambient"
+                else -> "BLE Device (${macAddress.takeLast(5)})"
+            }
+
+            val isBonded = try {
+                device.bondState == BluetoothDevice.BOND_BONDED
+            } catch (e: SecurityException) {
+                false
+            }
 
             val currentList = _scannedDevices.value.toMutableList()
             val existingIndex = currentList.indexOfFirst { it.macAddress == macAddress }
 
             val model = BleDeviceModel(
-                name = deviceName,
+                name = displayName,
                 macAddress = macAddress,
                 rssi = rssi,
-                isBonded = device.bondState == BluetoothDevice.BOND_BONDED
+                isBonded = isBonded
             )
 
             if (existingIndex >= 0) {
@@ -151,12 +179,20 @@ class CarLedBleManager(private val context: Context) {
             } else {
                 currentList.add(model)
             }
+
+            // Đưa các thiết bị CarLED / ESP32 lên đầu danh sách
+            currentList.sortByDescending {
+                it.name.contains(Constants.BLE_DEVICE_NAME_PREFIX, ignoreCase = true) ||
+                it.name.contains("ESP32", ignoreCase = true)
+            }
+
             _scannedDevices.value = currentList
+            Log.d(TAG, "Phát hiện thiết bị: $displayName ($macAddress, RSSI: $rssi dBm)")
         }
 
         override fun onScanFailed(errorCode: Int) {
             Log.e(TAG, "BLE Scan thất bại với mã lỗi: $errorCode")
-            _connectionState.value = ConnectionState.Error("Quét thiết bị thất bại ($errorCode)")
+            _connectionState.value = ConnectionState.Error("Quét thiết bị thất bại (Mã lỗi: $errorCode)")
         }
     }
 
@@ -199,7 +235,12 @@ class CarLedBleManager(private val context: Context) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 Log.i(TAG, "BLE đã kết nối. Yêu cầu mở rộng MTU lên ${Constants.BLE_DEFAULT_MTU}...")
                 _connectionState.value = ConnectionState.Connecting
-                gatt.requestMtu(Constants.BLE_DEFAULT_MTU)
+                val mtuRequested = gatt.requestMtu(Constants.BLE_DEFAULT_MTU)
+                if (!mtuRequested) {
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        gatt.discoverServices()
+                    }, 200)
+                }
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.w(TAG, "Thiết bị ngắt kết nối.")
                 cleanupGatt()
@@ -232,8 +273,9 @@ class CarLedBleManager(private val context: Context) {
                         }
                     }
 
+                    val safeName = try { gatt.device.name } catch (e: SecurityException) { null }
                     _connectionState.value = ConnectionState.Connected(
-                        deviceName = gatt.device.name ?: "CarLED",
+                        deviceName = if (!safeName.isNullOrBlank()) safeName else "CarLED-Ambient",
                         deviceAddress = gatt.device.address
                     )
                     Log.i(TAG, "Sẵn sàng điều khiển ESP32 LED Car!")

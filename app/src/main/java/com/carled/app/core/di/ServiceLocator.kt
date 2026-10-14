@@ -60,6 +60,9 @@ object ServiceLocator {
             stopScan             = StopScanUseCase(bleDeviceRepository),
             connectDevice        = ConnectDeviceUseCase(bleDeviceRepository),
             disconnectDevice     = DisconnectDeviceUseCase(bleDeviceRepository),
+            getScannedDevices    = GetScannedDevicesUseCase(bleDeviceRepository),
+            getConnectionState   = GetConnectionStateUseCase(bleDeviceRepository),
+            getLedState          = GetLedStateUseCase(bleDeviceRepository),
             // Basic LED
             sendColorCommand     = SendColorCommandUseCase(bleDeviceRepository),
             sendModeCommand      = SendModeCommandUseCase(bleDeviceRepository),

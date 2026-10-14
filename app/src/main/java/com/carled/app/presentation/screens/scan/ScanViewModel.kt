@@ -2,6 +2,7 @@ package com.carled.app.presentation.screens.scan
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.carled.app.domain.model.BleDeviceModel
 import com.carled.app.domain.model.ConnectionState
 import com.carled.app.domain.usecase.ble.BleUseCases
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,10 +19,24 @@ class ScanViewModel(
     val uiState: StateFlow<ScanUiState> = _uiState.asStateFlow()
 
     init {
-        // Lắng nghe cập nhật danh sách thiết bị quét được từ repository
+        // Quan sát danh sách thiết bị quét được từ repository
         viewModelScope.launch {
-            // Quan sát thiết bị được phát hiện
-            // Trong kiến trúc MVVM, ViewModel tổng hợp dữ liệu từ domain/data và xuất ra UiState duy nhất
+            bleUseCases.getScannedDevices().collect { devices ->
+                _uiState.update { it.copy(devices = devices) }
+            }
+        }
+
+        // Quan sát trạng thái kết nối Bluetooth (Scanning, Connecting, Connected, Disconnected, Error)
+        viewModelScope.launch {
+            bleUseCases.getConnectionState().collect { state ->
+                _uiState.update {
+                    it.copy(
+                        connectionState = state,
+                        isScanning = state is ConnectionState.Scanning,
+                        errorMessage = (state as? ConnectionState.Error)?.message
+                    )
+                }
+            }
         }
     }
 
@@ -41,19 +56,5 @@ class ScanViewModel(
 
     fun disconnectDevice() {
         bleUseCases.disconnectDevice()
-    }
-
-    fun updateScannedDevices(devices: List<com.carled.app.domain.model.BleDeviceModel>) {
-        _uiState.update { it.copy(devices = devices) }
-    }
-
-    fun updateConnectionState(state: ConnectionState) {
-        _uiState.update {
-            it.copy(
-                connectionState = state,
-                isScanning = state is ConnectionState.Scanning,
-                errorMessage = (state as? ConnectionState.Error)?.message
-            )
-        }
     }
 }

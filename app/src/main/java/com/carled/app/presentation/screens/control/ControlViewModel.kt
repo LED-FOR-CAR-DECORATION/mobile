@@ -18,6 +18,19 @@ class ControlViewModel(
     private val _uiState = MutableStateFlow(ControlUiState())
     val uiState: StateFlow<ControlUiState> = _uiState.asStateFlow()
 
+    init {
+        viewModelScope.launch {
+            bleUseCases.getLedState().collect { state ->
+                _uiState.update { it.copy(ledState = state) }
+            }
+        }
+        viewModelScope.launch {
+            bleUseCases.getConnectionState().collect { conn ->
+                _uiState.update { it.copy(connectionState = conn) }
+            }
+        }
+    }
+
     fun togglePower() {
         val newPowerState = !_uiState.value.ledState.isPowerOn
         viewModelScope.launch {

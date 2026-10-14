@@ -40,6 +40,17 @@ fun DivoomScanScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
+    // Tự động quét khi mở màn hình
+    LaunchedEffect(Unit) {
+        viewModel.startScan()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.stopScan()
+        }
+    }
+
     var selectedTab by remember { mutableStateOf(0) } // 0: Bluetooth, 1: WiFi
     var showManualAddDialog by remember { mutableStateOf(false) }
     var manualCodeInput by remember { mutableStateOf("") }
@@ -125,6 +136,35 @@ fun DivoomScanScreen(
             ) {
                 Spacer(modifier = Modifier.height(12.dp))
 
+                // Hiển thị thông báo lỗi nếu Bluetooth tắt hoặc chưa cấp quyền
+                if (uiState.errorMessage != null) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        colors = CardDefaults.cardColors(containerColor = DivoomDanger.copy(alpha = 0.2f)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = DivoomDanger,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = uiState.errorMessage ?: "",
+                                color = Color.White,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+
                 // 1. Carousel Dòng thiết bị phần cứng (Ảnh 2 Divoom)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(hardwareModels) { item ->
@@ -187,17 +227,44 @@ fun DivoomScanScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(conn.deviceName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                 Text(conn.deviceAddress, color = DivoomTextMuted, fontSize = 12.sp)
                             }
-                            Button(
-                                onClick = { viewModel.disconnectDevice() },
-                                colors = ButtonDefaults.buttonColors(containerColor = DivoomDanger.copy(alpha = 0.2f)),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Text("Ngắt kết nối", color = DivoomDanger, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = onNavigateBack,
+                                    colors = ButtonDefaults.buttonColors(containerColor = DivoomGold),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Điều khiển", color = DarkBackground, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = { viewModel.disconnectDevice() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = DivoomDanger.copy(alpha = 0.2f)),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Ngắt", color = DivoomDanger, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
+                        }
+                    }
+                    is ConnectionState.Connecting -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(DivoomCard)
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                color = DivoomGold,
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Đang kết nối ESP32 LED...", color = Color.White, fontSize = 13.sp)
                         }
                     }
                     else -> {
@@ -220,12 +287,22 @@ fun DivoomScanScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "Thiết bị khả dụng (${uiState.devices.size})",
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Thiết bị khả dụng (${uiState.devices.size})",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp
+                        )
+                        if (uiState.isScanning) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = DivoomGold
+                            )
+                        }
+                    }
 
                     IconButton(
                         onClick = {
@@ -272,6 +349,7 @@ fun DivoomScanScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(uiState.devices) { device ->
+                            val isCarLedDevice = device.name.contains("CarLED", ignoreCase = true) || device.name.contains("ESP32", ignoreCase = true)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -283,14 +361,29 @@ fun DivoomScanScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Bluetooth, contentDescription = null, tint = PrimaryCyan)
+                                    Icon(
+                                        Icons.Default.Bluetooth,
+                                        contentDescription = null,
+                                        tint = if (isCarLedDevice) DivoomGold else PrimaryCyan
+                                    )
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Column {
                                         Text(device.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                        Text(device.macAddress, color = DivoomTextMuted, fontSize = 11.sp)
+                                        Text("${device.macAddress} • ${device.rssi} dBm", color = DivoomTextMuted, fontSize = 11.sp)
                                     }
                                 }
-                                Text("Ghép nối", color = DivoomGold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Button(
+                                    onClick = { viewModel.connectDevice(device.macAddress) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = if (isCarLedDevice) DivoomGold else DivoomCardSecondary),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        "Ghép nối",
+                                        color = if (isCarLedDevice) DarkBackground else Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
                             }
                         }
                     }
@@ -299,8 +392,8 @@ fun DivoomScanScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // 3. Modal tìm kiếm Bluetooth (Spinner) khi đang quét (Ảnh 2)
-            if (uiState.isScanning) {
+            // 3. Modal tìm kiếm Bluetooth (Spinner) khi đang quét VÀ chưa tìm thấy thiết bị nào (Ảnh 2 Divoom)
+            if (uiState.isScanning && uiState.devices.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -332,6 +425,7 @@ fun DivoomScanScreen(
                     }
                 }
             }
+
 
             // 4. Modal "Thêm thiết bị của bạn" (Ảnh 3 Divoom)
             if (showManualAddDialog) {

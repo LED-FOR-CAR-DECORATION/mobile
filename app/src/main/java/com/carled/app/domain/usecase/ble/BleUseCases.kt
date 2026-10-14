@@ -38,6 +38,18 @@ class DisconnectDeviceUseCase(private val repository: BleDeviceRepository) {
     }
 }
 
+class GetScannedDevicesUseCase(private val repository: BleDeviceRepository) {
+    operator fun invoke(): StateFlow<List<BleDeviceModel>> = repository.scannedDevices
+}
+
+class GetConnectionStateUseCase(private val repository: BleDeviceRepository) {
+    operator fun invoke(): StateFlow<ConnectionState> = repository.connectionState
+}
+
+class GetLedStateUseCase(private val repository: BleDeviceRepository) {
+    operator fun invoke(): StateFlow<LedControlState> = repository.ledState
+}
+
 // ──────── Basic LED Control ────────
 
 class SendColorCommandUseCase(private val repository: BleDeviceRepository) {
@@ -139,6 +151,9 @@ data class BleUseCases(
     val stopScan: StopScanUseCase,
     val connectDevice: ConnectDeviceUseCase,
     val disconnectDevice: DisconnectDeviceUseCase,
+    val getScannedDevices: GetScannedDevicesUseCase,
+    val getConnectionState: GetConnectionStateUseCase,
+    val getLedState: GetLedStateUseCase,
     // Basic LED
     val sendColorCommand: SendColorCommandUseCase,
     val sendModeCommand: SendModeCommandUseCase,
