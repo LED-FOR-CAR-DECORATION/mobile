@@ -3,31 +3,26 @@ package com.carled.app.presentation.screens.marquee
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.carled.app.domain.model.TelemetryEvent
+import com.carled.app.domain.model.MarqueeLayout
 import com.carled.app.domain.usecase.ble.BleUseCases
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.first
 
 class MarqueeViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MarqueeUiState())
     val uiState: StateFlow<MarqueeUiState> = _uiState.asStateFlow()
-
-    init {
-        // Lắng nghe event "marquee_active" từ ESP32 để xác nhận đang phát
-        viewModelScope.launch {
-            bleUseCases.getTelemetryEvent().collect { event ->
-                when (event) {
-                    is TelemetryEvent.MarqueeActive -> {
-                        _uiState.update { it.copy(lastEventText = event.text, isSending = false) }
-                    }
-                    else -> Unit
-                }
-            }
-        }
-    }
+    val connection = bleUseCases.getConnectionState()
 
     fun updateText(text: String) {
         _uiState.update { it.copy(text = text) }
@@ -76,10 +71,33 @@ class MarqueeViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
             _uiState.update { it.copy(feedbackMessage = "Vui lòng nhập nội dung chữ") }
             return
         }
-        val cleanText = removeVietnameseTones(state.text.trim())
+        if (state.isSending) return
+        if (bleUseCases.getConnectionState().value !is com.carled.app.domain.model.ConnectionState.Connected) {
+            _uiState.update { it.copy(feedbackMessage = "Kết nối LED trước khi gửi.") }; return
+        }
+        if (!state.text.all { it.code in 32..126 }) {
+            _uiState.update { it.copy(feedbackMessage = "Vui lòng dùng ký tự tiếng Anh không dấu (ASCII).") }; return
+        }
+        val cleanText = MarqueeLayout.clean(state.text)
+        val layout = MarqueeLayout.fit(cleanText, state.size)
+        if (state.scrollMode == "static" && !layout.fits) {
+            _uiState.update { it.copy(feedbackMessage = "Chữ vượt khung 64×32 ở cỡ 5×7. Rút ngắn còn tối đa 40 ký tự hoặc chọn Cuộn trái.") }; return
+        }
         _uiState.update { it.copy(isSending = true, feedbackMessage = null) }
         viewModelScope.launch {
-            bleUseCases.sendMarquee(
+            try {
+            coroutineScope {
+            val static = state.scrollMode == "static"
+            val ack = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(if (static) 30000L else 10000L) {
+                bleUseCases.getTelemetryEvent().first {
+                    if (static) it is TelemetryEvent.UploadComplete || it is TelemetryEvent.UploadError
+                    else it is TelemetryEvent.MarqueeActive && it.text == cleanText
+                }
+            } }
+            if (static) {
+                val color = (0xff shl 24) or (state.r shl 16) or (state.g shl 8) or state.b
+                bleUseCases.uploadProjection(layout.render(color).rgb565())
+            } else bleUseCases.sendMarquee(
                 text       = cleanText,
                 r          = state.r,
                 g          = state.g,
@@ -89,7 +107,15 @@ class MarqueeViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
                 rainbow    = state.rainbow,
                 scrollMode = state.scrollMode
             )
-            _uiState.update { it.copy(feedbackMessage = "Đã phát chữ \"$cleanText\" lên bảng LED ✓", isSending = false) }
+            val event = ack.await()
+            if (event is TelemetryEvent.UploadError) error("LED báo lỗi: ${event.error}")
+            _uiState.update { it.copy(lastEventText = cleanText, feedbackMessage = if (static) "LED đã xác nhận chữ tĩnh · ${layout.glyphLabel} · ${layout.lines.size} dòng." else "Thiết bị đã xác nhận hiển thị chữ.") }
+            }
+            } catch (e: TimeoutCancellationException) {
+                _uiState.update { it.copy(feedbackMessage = "Chưa nhận xác nhận từ LED. Kiểm tra kết nối.") }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _uiState.update { it.copy(feedbackMessage = "Không gửi được: ${e.message}") } }
+            finally { _uiState.update { it.copy(isSending = false) } }
         }
     }
 

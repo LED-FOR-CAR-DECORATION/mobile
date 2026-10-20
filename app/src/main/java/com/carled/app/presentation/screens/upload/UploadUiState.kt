@@ -14,6 +14,10 @@ enum class DitherMode(val displayName: String) {
 }
 
 data class UploadUiState(
+    val isProcessing: Boolean = false,
+    val isLoadingImage: Boolean = false,
+    val imageNote: String? = null,
+    val previewDocument: com.carled.app.domain.model.PixelDocument? = null,
     val isUploading: Boolean = false,
     val uploadProgress: Float = 0f, // 0.0 → 1.0
     val selectedImageUri: String? = null,

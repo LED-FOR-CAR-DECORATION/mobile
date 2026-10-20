@@ -53,7 +53,7 @@ class BleDeviceRepositoryImpl(
 
     override suspend fun setBrightness(level: Int) {
         val frame = BleProtocolHelper.buildBrightnessFrame(level)
-        bleManager.sendCommand(frame, throttled = true)
+        bleManager.sendCommand(frame, throttled = false)
         _ledState.value = _ledState.value.copy(brightness = level)
     }
 
@@ -73,7 +73,7 @@ class BleDeviceRepositoryImpl(
 
     override suspend fun setSensitivity(sensitivity: Int) {
         val frame = BleProtocolHelper.buildSensitivityFrame(sensitivity)
-        bleManager.sendCommand(frame, throttled = true)
+        bleManager.sendCommand(frame, throttled = false)
         _ledState.value = _ledState.value.copy(sensitivity = sensitivity)
     }
 

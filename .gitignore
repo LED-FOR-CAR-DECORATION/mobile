@@ -17,6 +17,7 @@ out/
 build/
 app/build/
 .gradle/
+.kotlin/
 
 # Gradle files
 .gradle/

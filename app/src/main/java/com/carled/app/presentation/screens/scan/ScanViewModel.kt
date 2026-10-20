@@ -86,6 +86,8 @@ class ScanViewModel(
     }
 
     fun startScan() {
+        val connection = bleUseCases.getConnectionState().value
+        if (connection is ConnectionState.Connected || connection is ConnectionState.Connecting || connection is ConnectionState.Scanning) return
         _uiState.update { it.copy(isScanning = true, errorMessage = null) }
         bleUseCases.scanDevices()
     }

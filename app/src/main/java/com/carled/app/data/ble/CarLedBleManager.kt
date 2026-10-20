@@ -24,6 +24,7 @@ import com.carled.app.domain.model.BleDeviceModel
 import com.carled.app.domain.model.ConnectionState
 import com.carled.app.domain.model.DeviceTelemetryStatus
 import com.carled.app.domain.model.TelemetryEvent
+import com.carled.app.domain.model.isLedAdvertisement
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -85,6 +86,14 @@ class CarLedBleManager(private val context: Context) {
     private var lastSendTimestamp = 0L
 
     fun startScan() {
+        readBleScanBlocker(context)?.let { blocker ->
+            Log.w(TAG, "Không thể quét BLE: ${blocker.name}")
+            _connectionState.value = ConnectionState.Error(blocker.message)
+            return
+        }
+        if (_connectionState.value is ConnectionState.Scanning ||
+            _connectionState.value is ConnectionState.Connecting ||
+            _connectionState.value is ConnectionState.Connected) return
         val scanner = bluetoothAdapter?.bluetoothLeScanner
         if (scanner == null || bluetoothAdapter?.isEnabled != true) {
             Log.w(TAG, "Bluetooth chưa được kích hoạt trên điện thoại")
@@ -127,6 +136,9 @@ class CarLedBleManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Lỗi dừng scan: ${e.message}")
         }
+        if (_connectionState.value is ConnectionState.Scanning) {
+            _connectionState.value = ConnectionState.Disconnected
+        }
     }
 
     private val scanCallback = object : ScanCallback() {
@@ -142,14 +154,13 @@ class CarLedBleManager(private val context: Context) {
             val macAddress = device.address
             val rssi = result.rssi
 
-            // Bỏ qua các thiết bị không có tên và không phát UUID của CarLED để tránh rác danh sách
+            // Keep broad radio discovery so split ESP32 advertising/scan responses are not lost.
+            // Discard unrelated devices before storing, displaying, or logging them.
             val hasServiceUuid = scanRecord?.serviceUuids?.any {
                 it.uuid == Constants.BLE_SERVICE_UUID
             } == true
 
-            val isCarLed = (rawName?.contains(Constants.BLE_DEVICE_NAME_PREFIX, ignoreCase = true) == true)
-                    || (rawName?.contains("ESP32", ignoreCase = true) == true)
-                    || hasServiceUuid
+            if (!isLedAdvertisement(rawName, hasServiceUuid)) return
 
             // Đặt tên hiển thị thân thiện
             val displayName = when {
@@ -180,11 +191,7 @@ class CarLedBleManager(private val context: Context) {
                 currentList.add(model)
             }
 
-            // Đưa các thiết bị CarLED / ESP32 lên đầu danh sách
-            currentList.sortByDescending {
-                it.name.contains(Constants.BLE_DEVICE_NAME_PREFIX, ignoreCase = true) ||
-                it.name.contains("ESP32", ignoreCase = true)
-            }
+            currentList.sortByDescending { it.rssi }
 
             _scannedDevices.value = currentList
             Log.d(TAG, "Phát hiện thiết bị: $displayName ($macAddress, RSSI: $rssi dBm)")
@@ -377,22 +384,24 @@ class CarLedBleManager(private val context: Context) {
     }
 
     private fun sendRawBytes(bytes: ByteArray) {
-        val gatt = bluetoothGatt ?: return
-        val char = writeCharacteristic ?: return
+        check(_connectionState.value is ConnectionState.Connected) { "Thiết bị LED chưa kết nối" }
+        val gatt = checkNotNull(bluetoothGatt) { "Thiết bị LED đã ngắt kết nối" }
+        val char = checkNotNull(writeCharacteristic) { "Thiết bị chưa sẵn sàng nhận lệnh" }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            gatt.writeCharacteristic(
+            val result = gatt.writeCharacteristic(
                 char,
                 bytes,
                 BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
             )
+            check(result == android.bluetooth.BluetoothStatusCodes.SUCCESS) { "Bluetooth chưa nhận lệnh ($result). Hãy thử lại." }
         } else {
             @Suppress("DEPRECATION")
             char.value = bytes
             @Suppress("DEPRECATION")
             char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
             @Suppress("DEPRECATION")
-            gatt.writeCharacteristic(char)
+            check(gatt.writeCharacteristic(char)) { "Bluetooth chưa nhận lệnh. Hãy thử lại." }
         }
     }
 

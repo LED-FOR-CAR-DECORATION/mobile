@@ -2,316 +2,112 @@ package com.carled.app.presentation.screens.upload
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Rect
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.carled.app.domain.model.TelemetryEvent
+import com.carled.app.domain.model.*
 import com.carled.app.domain.usecase.ble.BleUseCases
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 
 class UploadViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
-
     private val _uiState = MutableStateFlow(UploadUiState())
-    val uiState: StateFlow<UploadUiState> = _uiState.asStateFlow()
+    val uiState = _uiState.asStateFlow()
+    val connection = bleUseCases.getConnectionState()
+    private var original: Bitmap? = null
+    private var loadJob: Job? = null
+    private var processJob: Job? = null
 
-    private var rawOriginalBitmap: Bitmap? = null
-
-    init {
-        // Lắng nghe tất cả telemetry events liên quan đến upload
-        viewModelScope.launch {
-            bleUseCases.getTelemetryEvent().collect { event ->
-                when (event) {
-                    is TelemetryEvent.UploadStarted -> {
-                        _uiState.update {
-                            it.copy(
-                                uploadStatus = UploadStatus.Starting,
-                                uploadExpectedBytes = event.expected,
-                                feedbackMessage = "ESP32 đã sẵn sàng nhận ảnh (${event.expected} bytes)"
-                            )
-                        }
-                    }
-                    is TelemetryEvent.UploadComplete -> {
-                        _uiState.update {
-                            it.copy(
-                                isUploading = false,
-                                uploadProgress = 1f,
-                                uploadStatus = UploadStatus.Complete,
-                                feedbackMessage = "✅ ĐÃ CHIẾU ẢNH LÊN BẢNG LED THÀNH CÔNG! (Mode ${event.mode})"
-                            )
-                        }
-                    }
-                    is TelemetryEvent.UploadError -> {
-                        _uiState.update {
-                            it.copy(
-                                isUploading = false,
-                                uploadStatus = UploadStatus.Error,
-                                feedbackMessage = "❌ Lỗi upload: ${event.error}"
-                            )
-                        }
-                    }
-                    else -> Unit
-                }
-            }
-        }
-    }
-
-    /**
-     * Người dùng chọn ảnh từ Thư viện.
-     */
     fun onImageSelected(context: Context, uri: Uri) {
+        if (_uiState.value.isUploading) return
+        loadJob?.cancel(); processJob?.cancel()
+        _uiState.update { it.copy(isLoadingImage = true, previewBitmap = null, previewDocument = null, feedbackMessage = null, uploadStatus = UploadStatus.Idle) }
+        loadJob = viewModelScope.launch {
+            try {
+                val bitmap = withContext(Dispatchers.IO) {
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    context.contentResolver.openInputStream(uri).use { BitmapFactory.decodeStream(it, null, bounds) }
+                    require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Định dạng ảnh chưa được hỗ trợ" }
+                    var sample = 1
+                    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1024) sample *= 2
+                    context.contentResolver.openInputStream(uri).use { requireNotNull(BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })) }
+                }
+                ensureActive(); original = bitmap
+                val isGif = context.contentResolver.getType(uri) == "image/gif"
+                _uiState.update { it.copy(selectedImageUri = uri.toString(), isLoadingImage = false, imageNote = if (isGif) "GIF: chiếu khung hình đầu tiên, giống công cụ chiếu ảnh hiện tại." else null) }
+                process()
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { original = null; _uiState.update { it.copy(isLoadingImage = false, isProcessing = false, feedbackMessage = "Không đọc được ảnh. Hãy chọn lại ảnh JPG, PNG hoặc GIF.") } }
+        }
+    }
+
+    fun loadMockAsset(context: Context, asset: String) {
+        if (original != null) return
+        _uiState.update { it.copy(isLoadingImage = true, fitMode = FitMode.CONTAIN) }
+        loadJob = viewModelScope.launch {
+            try {
+                original = withContext(Dispatchers.IO) { context.assets.open(asset).use { requireNotNull(BitmapFactory.decodeStream(it)) } }
+                _uiState.update { it.copy(isLoadingImage = false, imageNote = "Nội dung mô phỏng: chiếu ảnh mẫu tĩnh. File hoạt ảnh và quyền sở hữu thật sẽ lấy từ BE.") }
+                process()
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _uiState.update { it.copy(isLoadingImage = false, feedbackMessage = "Không đọc được ảnh mẫu Character.") } }
+        }
+    }
+
+    fun setFitMode(mode: FitMode) { if (!_uiState.value.isUploading) { _uiState.update { it.copy(fitMode = mode) }; process() } }
+    fun setDitherMode(mode: DitherMode) { if (!_uiState.value.isUploading) { _uiState.update { it.copy(ditherMode = mode) }; process() } }
+    fun setBrightness(percent: Int) { if (!_uiState.value.isUploading) { _uiState.update { it.copy(brightnessPercent = percent.coerceIn(40, 220)) }; process() } }
+    fun setContrast(percent: Int) { if (!_uiState.value.isUploading) { _uiState.update { it.copy(contrastPercent = percent.coerceIn(40, 220)) }; process() } }
+
+    private fun process() {
+        val input = original ?: return
+        processJob?.cancel()
+        val options = _uiState.value
+        _uiState.update { it.copy(isProcessing = true, uploadStatus = UploadStatus.Idle, feedbackMessage = null) }
+        processJob = viewModelScope.launch {
+            try {
+                val document = withContext(Dispatchers.Default) {
+                    val pixels = IntArray(input.width * input.height)
+                    input.getPixels(pixels, 0, input.width, 0, 0, input.width, input.height)
+                    PhotoRasterizer.process(pixels, input.width, input.height, when(options.fitMode) {
+                        FitMode.STRETCH -> PhotoFit.STRETCH; FitMode.COVER -> PhotoFit.COVER; FitMode.CONTAIN -> PhotoFit.CONTAIN
+                    }, options.brightnessPercent, options.contrastPercent, options.ditherMode == DitherMode.FLOYD_STEINBERG)
+                }
+                ensureActive()
+                val preview = Bitmap.createBitmap(document.pixels.toIntArray(), 64, 32, Bitmap.Config.ARGB_8888)
+                _uiState.update { it.copy(previewBitmap = preview, previewDocument = document, isProcessing = false) }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _uiState.update { it.copy(isProcessing = false, previewDocument = null, previewBitmap = null, feedbackMessage = "Không xử lý được ảnh. Hãy chọn lại.") } }
+        }
+    }
+
+    fun startUpload() {
+        val state = _uiState.value
+        if (state.isUploading || state.isProcessing || state.isLoadingImage) return
+        val document = state.previewDocument ?: return
+        if (connection.value !is ConnectionState.Connected) { _uiState.update { it.copy(feedbackMessage = "Kết nối LED trước khi chiếu ảnh.") }; return }
+        _uiState.update { it.copy(isUploading = true, uploadProgress = 0f, uploadStatus = UploadStatus.Uploading, feedbackMessage = "Đang gửi ảnh 64×32…") }
         viewModelScope.launch {
-            runCatching {
-                val inputStream = context.contentResolver.openInputStream(uri)
-                val original = android.graphics.BitmapFactory.decodeStream(inputStream)
-                inputStream?.close()
-
-                rawOriginalBitmap = original
-                _uiState.update {
-                    it.copy(
-                        selectedImageUri = uri.toString(),
-                        uploadStatus = UploadStatus.Idle,
-                        uploadProgress = 0f,
-                        feedbackMessage = "Đã nạp ảnh gốc (${original.width}×${original.height} px)"
-                    )
-                }
-                reprocessImage()
-            }.onFailure { e ->
-                _uiState.update { it.copy(feedbackMessage = "Không thể đọc ảnh: ${e.message}") }
-            }
-        }
-    }
-
-    fun setFitMode(mode: FitMode) {
-        _uiState.update { it.copy(fitMode = mode) }
-        reprocessImage()
-    }
-
-    fun setDitherMode(mode: DitherMode) {
-        _uiState.update { it.copy(ditherMode = mode) }
-        reprocessImage()
-    }
-
-    fun setBrightness(percent: Int) {
-        _uiState.update { it.copy(brightnessPercent = percent) }
-        reprocessImage()
-    }
-
-    fun setContrast(percent: Int) {
-        _uiState.update { it.copy(contrastPercent = percent) }
-        reprocessImage()
-    }
-
-    /**
-     * Xử lý lại ảnh 64×32 theo các tham số: FitMode, Brightness, Contrast, Dithering
-     */
-    private fun reprocessImage() {
-        val original = rawOriginalBitmap ?: return
-        viewModelScope.launch(Dispatchers.Default) {
-            val fit = _uiState.value.fitMode
-            val dither = _uiState.value.ditherMode
-            val bri = _uiState.value.brightnessPercent / 100f
-            val con = _uiState.value.contrastPercent / 100f
-
-            // 1. Tạo Canvas 64×32 nền đen
-            val targetW = 64
-            val targetH = 32
-            val resultBmp = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(resultBmp)
-            canvas.drawColor(Color.BLACK)
-
-            val srcW = original.width
-            val srcH = original.height
-
-            when (fit) {
-                FitMode.STRETCH -> {
-                    val destRect = Rect(0, 0, targetW, targetH)
-                    canvas.drawBitmap(original, null, destRect, Paint(Paint.FILTER_BITMAP_FLAG))
-                }
-                FitMode.CONTAIN -> {
-                    val scale = minOf(targetW.toFloat() / srcW, targetH.toFloat() / srcH)
-                    val nw = (srcW * scale).toInt()
-                    val nh = (srcH * scale).toInt()
-                    val left = (targetW - nw) / 2
-                    val top = (targetH - nh) / 2
-                    val destRect = Rect(left, top, left + nw, top + nh)
-                    canvas.drawBitmap(original, null, destRect, Paint(Paint.FILTER_BITMAP_FLAG))
-                }
-                FitMode.COVER -> {
-                    val scale = maxOf(targetW.toFloat() / srcW, targetH.toFloat() / srcH)
-                    val nw = (srcW * scale).toInt()
-                    val nh = (srcH * scale).toInt()
-                    val left = (targetW - nw) / 2
-                    val top = (targetH - nh) / 2
-                    val destRect = Rect(left, top, left + nw, top + nh)
-                    canvas.drawBitmap(original, null, destRect, Paint(Paint.FILTER_BITMAP_FLAG))
-                }
-            }
-
-            // 2. Chỉnh Brightness & Contrast từng pixel (theo công thức ble_image_importer.html)
-            val pixels = IntArray(targetW * targetH)
-            resultBmp.getPixels(pixels, 0, targetW, 0, 0, targetW, targetH)
-
-            for (i in pixels.indices) {
-                val px = pixels[i]
-                var r = (px shr 16) and 0xFF
-                var g = (px shr 8) and 0xFF
-                var b = px and 0xFF
-
-                // Formula: v = ((v - 128) * con + 128) * bri
-                r = (((r - 128f) * con + 128f) * bri).toInt().coerceIn(0, 255)
-                g = (((g - 128f) * con + 128f) * bri).toInt().coerceIn(0, 255)
-                b = (((b - 128f) * con + 128f) * bri).toInt().coerceIn(0, 255)
-
-                pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-            }
-
-            // 3. Thuật toán Floyd-Steinberg Dithering cho dải màu RGB565 (64×32)
-            if (dither == DitherMode.FLOYD_STEINBERG) {
-                applyFloydSteinbergDither(pixels, targetW, targetH)
-            }
-
-            resultBmp.setPixels(pixels, 0, targetW, 0, 0, targetW, targetH)
-
-            withContext(Dispatchers.Main) {
-                _uiState.update {
-                    it.copy(previewBitmap = resultBmp)
-                }
-            }
-        }
-    }
-
-    /**
-     * Floyd-Steinberg Error Diffusion Algorithm
-     * Phân phối lượng sai số lượng tử hóa màu: (x+1, y): 7/16, (x-1, y+1): 3/16, (x, y+1): 5/16, (x+1, y+1): 1/16
-     */
-    private fun applyFloydSteinbergDither(pixels: IntArray, w: Int, h: Int) {
-        val rArr = FloatArray(w * h)
-        val gArr = FloatArray(w * h)
-        val bArr = FloatArray(w * h)
-
-        for (i in pixels.indices) {
-            val px = pixels[i]
-            rArr[i] = ((px shr 16) and 0xFF).toFloat()
-            gArr[i] = ((px shr 8) and 0xFF).toFloat()
-            bArr[i] = (px and 0xFF).toFloat()
-        }
-
-        for (y in 0 until h) {
-            for (x in 0 until w) {
-                val idx = y * w + x
-                val oldR = rArr[idx]
-                val oldG = gArr[idx]
-                val oldB = bArr[idx]
-
-                // Lượng tử hóa về 5-bit R, 6-bit G, 5-bit B
-                val newR = Math.round(oldR / 255f * 31f) * (255f / 31f)
-                val newG = Math.round(oldG / 255f * 63f) * (255f / 63f)
-                val newB = Math.round(oldB / 255f * 31f) * (255f / 31f)
-
-                val errR = oldR - newR
-                val errG = oldG - newG
-                val errB = oldB - newB
-
-                fun distribute(nx: Int, ny: Int, factor: Float) {
-                    if (nx in 0 until w && ny in 0 until h) {
-                        val nIdx = ny * w + nx
-                        rArr[nIdx] = (rArr[nIdx] + errR * factor).coerceIn(0f, 255f)
-                        gArr[nIdx] = (gArr[nIdx] + errG * factor).coerceIn(0f, 255f)
-                        bArr[nIdx] = (bArr[nIdx] + errB * factor).coerceIn(0f, 255f)
+            try {
+                coroutineScope {
+                    val ack = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(30_000) {
+                        bleUseCases.getTelemetryEvent().first { it is TelemetryEvent.UploadComplete || it is TelemetryEvent.UploadError }
+                    } }
+                    bleUseCases.uploadProjection(document.rgb565())
+                    _uiState.update { it.copy(feedbackMessage = "Đã gửi dữ liệu; chờ LED xác nhận…") }
+                    when (val result = ack.await()) {
+                        is TelemetryEvent.UploadComplete -> _uiState.update { it.copy(uploadStatus = UploadStatus.Complete, uploadProgress = 1f, feedbackMessage = "LED đã xác nhận nhận ảnh.") }
+                        is TelemetryEvent.UploadError -> _uiState.update { it.copy(uploadStatus = UploadStatus.Error, feedbackMessage = "LED báo lỗi: ${result.error}") }
+                        else -> Unit
                     }
                 }
-
-                distribute(x + 1, y, 7f / 16f)
-                distribute(x - 1, y + 1, 3f / 16f)
-                distribute(x, y + 1, 5f / 16f)
-                distribute(x + 1, y + 1, 1f / 16f)
-
-                val ir = newR.toInt().coerceIn(0, 255)
-                val ig = newG.toInt().coerceIn(0, 255)
-                val ib = newB.toInt().coerceIn(0, 255)
-                pixels[idx] = (0xFF shl 24) or (ir shl 16) or (ig shl 8) or ib
-            }
+            } catch (e: TimeoutCancellationException) { _uiState.update { it.copy(uploadStatus = UploadStatus.Error, feedbackMessage = "Chưa nhận xác nhận từ LED. Kiểm tra kết nối trước khi thử lại.") } }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _uiState.update { it.copy(uploadStatus = UploadStatus.Error, feedbackMessage = "Không gửi được ảnh: ${e.message}") } }
+            finally { _uiState.update { it.copy(isUploading = false) } }
         }
     }
-
-    /**
-     * Bắt đầu upload ảnh lên ESP32 qua BLE Binary Protocol
-     */
-    fun startUpload() {
-        val bitmap = _uiState.value.previewBitmap ?: run {
-            _uiState.update { it.copy(feedbackMessage = "Vui lòng chọn ảnh trước") }
-            return
-        }
-
-        _uiState.update {
-            it.copy(
-                isUploading = true,
-                uploadProgress = 0.05f,
-                uploadStatus = UploadStatus.Uploading,
-                feedbackMessage = "Đang truyền dữ liệu ảnh qua BLE (Opcode 0x10 -> 0x11 -> 0x12)..."
-            )
-        }
-
-        viewModelScope.launch {
-            runCatching {
-                val rgb565Data = bitmapToLittleEndianRgb565(bitmap)
-                bleUseCases.uploadProjection(rgb565Data)
-                _uiState.update { it.copy(uploadProgress = 1f) }
-            }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        isUploading = false,
-                        uploadStatus = UploadStatus.Error,
-                        feedbackMessage = "❌ Lỗi upload: ${e.message}"
-                    )
-                }
-            }
-        }
-    }
-
-    fun reloadProjection() {
-        viewModelScope.launch {
-            bleUseCases.reloadProjection()
-            _uiState.update { it.copy(feedbackMessage = "Đã gửi lệnh nạp lại ảnh từ SPIFFS Flash") }
-        }
-    }
-
-    fun clearFeedback() {
-        _uiState.update { it.copy(feedbackMessage = null) }
-    }
-
-    /**
-     * Convert 64×32 Bitmap sang mảng RGB565 Little-Endian (2 bytes/pixel, 4096 bytes).
-     * Chuẩn đồng bộ 100% với getRgb565Bytes() trong ble_image_importer.html và ESP32 NimBLE:
-     *   col565 = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
-     *   bytes[0] = col565 & 0xFF        (Low byte first)
-     *   bytes[1] = (col565 >> 8) & 0xFF (High byte second)
-     */
-    private fun bitmapToLittleEndianRgb565(bitmap: Bitmap): ByteArray {
-        val data = ByteArray(64 * 32 * 2)
-        var idx = 0
-        for (y in 0 until 32) {
-            for (x in 0 until 64) {
-                val px = bitmap.getPixel(x, y)
-                val r = (Color.red(px) shr 3) and 0x1F
-                val g = (Color.green(px) shr 2) and 0x3F
-                val b = (Color.blue(px) shr 3) and 0x1F
-                val col565 = (r shl 11) or (g shl 5) or b
-                data[idx++] = (col565 and 0xFF).toByte()
-                data[idx++] = ((col565 shr 8) and 0xFF).toByte()
-            }
-        }
-        return data
-    }
+    fun reloadProjection() { viewModelScope.launch { try { bleUseCases.reloadProjection() } catch (e: Exception) { _uiState.update { it.copy(feedbackMessage = "Không tải lại được ảnh: ${e.message}") } } } }
+    fun clearFeedback() { _uiState.update { it.copy(feedbackMessage = null) } }
 }
-

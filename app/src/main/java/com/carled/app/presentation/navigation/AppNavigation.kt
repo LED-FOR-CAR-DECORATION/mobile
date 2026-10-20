@@ -1,143 +1,79 @@
 package com.carled.app.presentation.navigation
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.*
 import com.carled.app.core.di.ServiceLocator
-import com.carled.app.presentation.screens.auth.LoginScreen
-import com.carled.app.presentation.screens.auth.LoginViewModel
-import com.carled.app.presentation.screens.canvas.CanvasScreen
-import com.carled.app.presentation.screens.canvas.CanvasViewModel
-import com.carled.app.presentation.screens.control.ControlViewModel
-import com.carled.app.presentation.screens.main.MainContainerScreen
-import com.carled.app.presentation.screens.marquee.MarqueeScreen
-import com.carled.app.presentation.screens.marquee.MarqueeViewModel
-import com.carled.app.presentation.screens.scan.DivoomScanScreen
-import com.carled.app.presentation.screens.scan.ScanViewModel
-import com.carled.app.presentation.screens.store.StoreScreen
-import com.carled.app.presentation.screens.store.StoreViewModel
-import com.carled.app.presentation.screens.upload.UploadScreen
-import com.carled.app.presentation.screens.upload.UploadViewModel
+import com.carled.app.presentation.screens.auth.*
+import com.carled.app.presentation.screens.canvas.*
+import com.carled.app.presentation.screens.control.*
+import com.carled.app.presentation.screens.main.MirageHomeScreen
+import com.carled.app.presentation.screens.marquee.*
+import com.carled.app.presentation.screens.scan.*
 import kotlinx.coroutines.launch
+import com.carled.app.presentation.screens.upload.*
+import com.carled.app.data.local.MockCharacterInventory
+
+private fun <T : ViewModel> factory(create: () -> T) = object : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <V : ViewModel> create(modelClass: Class<V>): V = create() as V
+}
 
 @Composable
-fun AppNavigation(
-    navController: NavHostController = rememberNavController()
-) {
-    // Shared ViewModels qua ServiceLocator
-    val controlViewModel = remember { ControlViewModel(ServiceLocator.bleUseCases) }
-    val scanViewModel = remember { ScanViewModel(ServiceLocator.bleUseCases) }
-    val scanUiState by scanViewModel.uiState.collectAsState()
-    val currentUser by ServiceLocator.authRepository.getCurrentUser().collectAsState(initial = null)
-    val coroutineScope = rememberCoroutineScope()
-
-    // Khởi tạo điểm bắt đầu dựa trên trạng thái đã đăng nhập hay chưa
-    val startDestination = if (ServiceLocator.userPreferences.getAuthToken().isNullOrBlank()) {
-        NavRoute.Login.route
-    } else {
-        NavRoute.Main.route
-    }
-
-    NavHost(
-        navController = navController,
-        startDestination = startDestination
-    ) {
-        // Màn hình chính phong cách Divoom (5 Tabs)
-        composable(NavRoute.Main.route) {
-            MainContainerScreen(
-                controlViewModel = controlViewModel,
-                connectionState = scanUiState.connectionState,
-                currentUser = currentUser,
-                onOpenScanner = { navController.navigate(NavRoute.Scan.route) },
-                onOpenCanvas = { navController.navigate(NavRoute.Canvas.route) },
-                onOpenMarquee = { navController.navigate(NavRoute.Marquee.route) },
-                onOpenUpload = { navController.navigate(NavRoute.Upload.route) },
-                onOpenStore = { navController.navigate(NavRoute.Store.route) },
-                onLogout = {
-                    coroutineScope.launch {
-                        ServiceLocator.logoutUseCase()
-                        navController.navigate(NavRoute.Login.route) {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    }
-                }
-            )
+fun AppNavigation(navController: NavHostController = rememberNavController()) {
+    val context = LocalContext.current.applicationContext
+    // Activity-scoped shared models; route models below are scoped to their back-stack entry.
+    val control: ControlViewModel = viewModel(factory = factory { ControlViewModel(ServiceLocator.bleUseCases) })
+    val scanner: ScanViewModel = viewModel(factory = factory { ScanViewModel(ServiceLocator.bleUseCases) })
+    val user by ServiceLocator.authRepository.getCurrentUser().collectAsState(initial = null)
+    val scope = rememberCoroutineScope()
+    val start = remember { if (ServiceLocator.userPreferences.getAuthToken().isNullOrBlank()) "login" else "main" }
+    fun openCanvas(id: String? = null) { navController.navigate("studio?draft=${id ?: ""}") }
+    NavHost(navController, startDestination = start) {
+        composable("login") { entry ->
+            val vm: LoginViewModel = viewModel(entry, factory = factory { LoginViewModel(ServiceLocator.loginUseCase, ServiceLocator.registerUseCase) })
+            MirageLoginScreen(vm) { navController.navigate("main") { popUpTo("login") { inclusive = true }; launchSingleTop = true } }
         }
-
-        // Quét & Kết nối Bluetooth phong cách Divoom
-        composable(NavRoute.Scan.route) {
-            DivoomScanScreen(
-                viewModel = scanViewModel,
-                onNavigateBack = { navController.popBackStack() }
-            )
+        composable("main") {
+            MirageHomeScreen(control, scanner, user,
+                openScan = { navController.navigate("scan") }, openControl = { navController.navigate("control") },
+                openCanvas = { openCanvas(it) }, openMarquee = { navController.navigate("marquee") },
+                openUpload = { navController.navigate("image") }, openCharacter = { navController.navigate("character/$it") }, logout = {
+                    scope.launch { ServiceLocator.logoutUseCase(); navController.navigate("login") { popUpTo(0) { inclusive = true } } }
+                })
         }
-
-        // Bảng vẽ Live Canvas Pixel 64x32
-        composable(NavRoute.Canvas.route) { backStackEntry ->
-            val canvasViewModel = remember(backStackEntry) {
-                CanvasViewModel(ServiceLocator.bleUseCases)
-            }
-            CanvasScreen(
-                viewModel = canvasViewModel,
-                onNavigateBack = { navController.popBackStack() }
-            )
+        composable("scan") { MirageScanScreen(scanner) { navController.popBackStack() } }
+        composable("control") {
+            MirageControlScreen(control, { navController.popBackStack() }, { navController.navigate("scan") }, { navController.navigate("library") }, { navController.navigate("marquee") })
         }
-
-        // Bộ soạn thảo chữ LED chạy chữ (Marquee Text)
-        composable(NavRoute.Marquee.route) { backStackEntry ->
-            val marqueeViewModel = remember(backStackEntry) {
-                MarqueeViewModel(ServiceLocator.bleUseCases)
-            }
-            MarqueeScreen(
-                viewModel = marqueeViewModel,
-                onNavigateBack = { navController.popBackStack() }
-            )
+        composable("library") {
+            MirageHomeScreen(control, scanner, user,
+                openScan = { navController.navigate("scan") }, openControl = { navController.navigate("control") },
+                openCanvas = { openCanvas(it) }, openMarquee = { navController.navigate("marquee") }, openUpload = { navController.navigate("image") }, openCharacter = { navController.navigate("character/$it") },
+                logout = { scope.launch { ServiceLocator.logoutUseCase(); navController.navigate("login") { popUpTo(0) { inclusive = true } } } }, initialTab = 1)
         }
-
-        // Nạp ảnh nhị phân Flash SPIFFS
-        composable(NavRoute.Upload.route) { backStackEntry ->
-            val uploadViewModel = remember(backStackEntry) {
-                UploadViewModel(ServiceLocator.bleUseCases)
-            }
-            UploadScreen(
-                viewModel = uploadViewModel,
-                onNavigateBack = { navController.popBackStack() }
-            )
+        composable("studio?draft={draft}") { entry ->
+            val id = entry.arguments?.getString("draft")?.takeIf { it.isNotBlank() }
+            val vm: StudioViewModel = viewModel(entry, factory = factory { StudioViewModel(ServiceLocator.bleUseCases, context, id) })
+            StudioScreen(vm, { navController.popBackStack() })
         }
-
-        // Cửa hàng Car LED eStore (Flow 1 E-commerce)
-        composable(NavRoute.Store.route) { backStackEntry ->
-            val storeViewModel = remember(backStackEntry) {
-                StoreViewModel(ServiceLocator.productRepository)
-            }
-            StoreScreen(
-                viewModel = storeViewModel,
-                onNavigateBack = { navController.popBackStack() }
-            )
+        composable("image") { entry ->
+            val vm: UploadViewModel = viewModel(entry, factory = factory { UploadViewModel(ServiceLocator.bleUseCases) })
+            PhotoProjectionScreen(vm, { navController.popBackStack() }, { navController.navigate("scan") })
         }
-
-        // Màn hình Đăng nhập & Đăng ký phong cách Retro Pixel (Figma LEDSCREEN)
-        composable(NavRoute.Login.route) { backStackEntry ->
-            val loginViewModel = remember(backStackEntry) {
-                LoginViewModel(
-                    loginUseCase = ServiceLocator.loginUseCase,
-                    registerUseCase = ServiceLocator.registerUseCase
-                )
-            }
-            LoginScreen(
-                viewModel = loginViewModel,
-                onLoginSuccess = {
-                    navController.navigate(NavRoute.Main.route) {
-                        popUpTo(NavRoute.Login.route) { inclusive = true }
-                    }
-                }
-            )
+        composable("character/{id}") { entry ->
+            val character = MockCharacterInventory().listOwned(user?.id ?: "").firstOrNull { it.characterId == entry.arguments?.getString("id") }
+            val vm: UploadViewModel = viewModel(entry, factory = factory { UploadViewModel(ServiceLocator.bleUseCases) })
+            if (character != null) PhotoProjectionScreen(vm, { navController.popBackStack() }, { navController.navigate("scan") }, character)
+            else androidx.compose.material3.Text("Không tìm thấy Character trong Inventory.")
+        }
+        composable("marquee") { entry ->
+            val vm: MarqueeViewModel = viewModel(entry, factory = factory { MarqueeViewModel(ServiceLocator.bleUseCases) })
+            MirageMarqueeScreen(vm, { navController.popBackStack() })
         }
     }
 }
