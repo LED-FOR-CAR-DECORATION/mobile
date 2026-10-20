@@ -33,6 +33,7 @@ data class DivoomTabItem(
 fun MainContainerScreen(
     controlViewModel: ControlViewModel,
     connectionState: ConnectionState,
+    currentUser: com.carled.app.domain.model.User? = null,
     onOpenScanner: () -> Unit,
     onOpenCanvas: () -> Unit,
     onOpenMarquee: () -> Unit,
@@ -46,14 +47,13 @@ fun MainContainerScreen(
     val tabs = listOf(
         DivoomTabItem("Thiết bị", Icons.Default.Explore),
         DivoomTabItem("Khuôn mặt", Icons.Default.GridView),
-        DivoomTabItem("Cộng đồng", Icons.Default.ViewInAr),
         DivoomTabItem("Tin nhắn", Icons.Default.ChatBubbleOutline),
         DivoomTabItem("Hồ Sơ", Icons.Default.AccountCircle)
     )
 
     Scaffold(
         bottomBar = {
-            // Thanh Bottom Navigation 5 tab phong cách Divoom
+            // Thanh Bottom Navigation 4 tab phong cách Divoom
             Column {
                 Divider(color = DivoomBorder, thickness = 0.5.dp)
                 Row(
@@ -111,13 +111,12 @@ fun MainContainerScreen(
                 1 -> DivoomGalleryScreen(
                     viewModel = controlViewModel
                 )
-                2 -> DivoomCommunityTab(
-                    onOpenCanvas = onOpenCanvas
-                )
-                3 -> DivoomMessagesScreen(
+                2 -> DivoomMessagesScreen(
                     onOpenSupportChat = onOpenStore
                 )
-                4 -> DivoomProfileScreen(
+                3 -> DivoomProfileScreen(
+                    userName = currentUser?.fullName ?: "Tài xế Car LED",
+                    userEmail = currentUser?.email,
                     onOpenStore = onOpenStore,
                     onLogout = onLogout
                 )

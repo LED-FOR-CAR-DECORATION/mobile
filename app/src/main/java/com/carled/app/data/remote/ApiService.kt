@@ -8,6 +8,7 @@ import kotlinx.coroutines.delay
 
 interface ApiService {
     suspend fun login(request: LoginRequest): LoginResponse
+    suspend fun register(request: LoginRequest): LoginResponse
     suspend fun getProducts(): List<ProductDto>
     suspend fun getProductById(id: String): ProductDto
 }
@@ -24,6 +25,19 @@ class MockApiService : ApiService {
                 id = "usr_001",
                 email = request.email,
                 fullName = "Car LED Driver",
+                role = "Customer"
+            )
+        )
+    }
+
+    override suspend fun register(request: LoginRequest): LoginResponse {
+        delay(600)
+        return LoginResponse(
+            token = "jwt-mock-register-token-sep-carled",
+            user = UserDto(
+                id = "usr_new_${System.currentTimeMillis() % 1000}",
+                email = request.email,
+                fullName = request.email.substringBefore("@").replaceFirstChar { it.uppercase() },
                 role = "Customer"
             )
         )

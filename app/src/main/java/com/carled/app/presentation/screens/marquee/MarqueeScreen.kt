@@ -50,11 +50,15 @@ fun MarqueeScreen(
     var blinkVisible by remember { mutableStateOf(true) }
     var rainbowHue by remember { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(uiState.speed, uiState.scrollMode, uiState.text) {
+    LaunchedEffect(uiState.speed, uiState.scrollMode, uiState.text, uiState.size) {
         val stepDelay = (85 - (uiState.speed * 0.7f)).toLong().coerceAtLeast(15L)
-        val charWidth = if (uiState.size == 2) 12f else 6f
         val cleanText = MarqueeViewModel.removeVietnameseTones(uiState.text.ifBlank { "CAR LED" })
-        val totalWidth = cleanText.length * charWidth
+        val fontSize = if (uiState.size == 2) 13f else 8.5f
+        val testPaint = android.graphics.Paint().apply {
+            textSize = fontSize
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        }
+        val totalWidth = testPaint.measureText(cleanText)
 
         while (isActive) {
             delay(stepDelay)
@@ -123,8 +127,7 @@ fun MarqueeScreen(
                     .border(1.5.dp, DivoomGold.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
             ) {
                 val cleanText = MarqueeViewModel.removeVietnameseTones(uiState.text.ifBlank { "CAR LED" })
-                val charW = if (uiState.size == 2) 12f else 6f
-                val fontSizePx = if (uiState.size == 2) 13f else 8f
+                val fontSizePx = if (uiState.size == 2) 13f else 8.5f
                 val fontY = if (uiState.size == 2) 20f else 18f
 
                 Canvas(modifier = Modifier.fillMaxSize()) {
@@ -136,26 +139,34 @@ fun MarqueeScreen(
                             val paint = android.graphics.Paint().apply {
                                 isAntiAlias = false
                                 textSize = fontSizePx * scaleY
-                                typeface = android.graphics.Typeface.MONOSPACE
-                                isFakeBoldText = true
+                                typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
                             }
 
-                            for (i in cleanText.indices) {
-                                val charX = (previewCursorX + i * charW) * scaleX
-                                if (charX > -charW * scaleX && charX < size.width) {
-                                    if (uiState.rainbow) {
+                            if (uiState.rainbow) {
+                                var currX = previewCursorX * scaleX
+                                for (i in cleanText.indices) {
+                                    val ch = cleanText[i].toString()
+                                    val charW = paint.measureText(ch)
+                                    if (currX + charW > 0 && currX < size.width) {
                                         val hue = (rainbowHue + i * 25f) % 360f
                                         paint.color = android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))
-                                    } else {
-                                        paint.color = android.graphics.Color.rgb(uiState.r, uiState.g, uiState.b)
+                                        canvas.nativeCanvas.drawText(
+                                            ch,
+                                            currX,
+                                            fontY * scaleY,
+                                            paint
+                                        )
                                     }
-                                    canvas.nativeCanvas.drawText(
-                                        cleanText[i].toString(),
-                                        charX,
-                                        fontY * scaleY,
-                                        paint
-                                    )
+                                    currX += charW
                                 }
+                            } else {
+                                paint.color = android.graphics.Color.rgb(uiState.r, uiState.g, uiState.b)
+                                canvas.nativeCanvas.drawText(
+                                    cleanText,
+                                    previewCursorX * scaleX,
+                                    fontY * scaleY,
+                                    paint
+                                )
                             }
                         }
                     }

@@ -1,4 +1,4 @@
-# Run-App.ps1 - Script tự động build, cài đặt và khởi chạy app CarLed trên điện thoại
+﻿# Run-App.ps1 - Script tự động build, cài đặt và khởi chạy app CarLed trên điện thoại
 param (
     [switch]$SkipBuild = $false,
     [switch]$Logs = $false
@@ -12,6 +12,33 @@ Write-Host "========================================" -ForegroundColor Cyan
 
 # 1. Kiểm tra lệnh adb
 $adbCmd = Get-Command adb -ErrorAction SilentlyContinue
+if (-not $adbCmd) {
+    # Tự động tìm adb từ local.properties hoặc các đường dẫn SDK phổ biến
+    $searchPaths = @()
+    if (Test-Path "$PSScriptRoot\local.properties") {
+        $sdkLine = Get-Content "$PSScriptRoot\local.properties" | Where-Object { $_ -match '^sdk\.dir\s*=' }
+        if ($sdkLine) {
+            $parsedSdk = ($sdkLine -split '=', 2)[1].Trim().Replace('\\', '\').Replace('\:', ':')
+            $searchPaths += "$parsedSdk\platform-tools"
+        }
+    }
+    if ($env:ANDROID_HOME) { $searchPaths += "$env:ANDROID_HOME\platform-tools" }
+    if ($env:ANDROID_SDK_ROOT) { $searchPaths += "$env:ANDROID_SDK_ROOT\platform-tools" }
+    $searchPaths += "D:\Android\Sdk\platform-tools"
+    $searchPaths += "$env:LOCALAPPDATA\Android\Sdk\platform-tools"
+
+    foreach ($p in $searchPaths) {
+        if ($p -and (Test-Path "$p\adb.exe")) {
+            $env:PATH = "$p;$env:PATH"
+            $adbCmd = Get-Command adb -ErrorAction SilentlyContinue
+            if ($adbCmd) {
+                Write-Host "ℹ️ Đã tự động nhận diện adb tại: $p" -ForegroundColor Cyan
+                break
+            }
+        }
+    }
+}
+
 if (-not $adbCmd) {
     Write-Host "❌ Không tìm thấy công cụ 'adb' trong PATH." -ForegroundColor Red
     Write-Host "Vui lòng kiểm tra Android SDK platform-tools." -ForegroundColor Yellow
@@ -57,6 +84,33 @@ if ($SkipBuild -and (Test-Path $apkPath)) {
     Write-Host "`n⏩ [2/4] Bỏ qua bước build (-SkipBuild)." -ForegroundColor Yellow
 } else {
     Write-Host "`n🔨 [2/4] Đang biên dịch ứng dụng (assembleDebug)..." -ForegroundColor Yellow
+
+    # Đảm bảo dùng JDK tương thích (Gradle 8.7 hỗ trợ tối đa Java 22)
+    $currentJavaVer = 0
+    try {
+        $verStr = & java -version 2>&1 | Out-String
+        if ($verStr -match 'version "(\d+)') {
+            $currentJavaVer = [int]$matches[1]
+        }
+    } catch {}
+
+    if ($currentJavaVer -gt 22 -or $currentJavaVer -eq 0) {
+        $compatibleJdkList = @(
+            "D:\IntelliJ IDEA 2025.2.3\jbr",
+            "C:\Program Files\Android\Android Studio\jbr",
+            "D:\Android\Android Studio\jbr",
+            "C:\Program Files\Java\jdk-21",
+            "C:\Program Files\Java\jdk-17"
+        )
+        foreach ($jdk in $compatibleJdkList) {
+            if (Test-Path "$jdk\bin\javac.exe") {
+                $env:JAVA_HOME = $jdk
+                Write-Host "ℹ️ Đã tự động chọn JDK tương thích: $jdk" -ForegroundColor Cyan
+                break
+            }
+        }
+    }
+
     & .\gradlew.bat assembleDebug
     if ($LASTEXITCODE -ne 0) {
         Write-Host "❌ Quá trình biên dịch thất bại!" -ForegroundColor Red
@@ -71,20 +125,34 @@ if (-not (Test-Path $apkPath)) {
 }
 
 # 4. Cài đặt APK vào máy
+$appPackage = "com.carled.app"
+$mainActivity = "com.carled.app.MainActivity"
+
 Write-Host "`n📦 [3/4] Đang cài đặt APK vào $deviceModel..." -ForegroundColor Yellow
-$installOutput = adb -s $deviceId install -r $apkPath
+$installOutput = adb -s $deviceId install -r -t -d $apkPath
 $installText = $installOutput -join " "
+
+if ($installText -match "INSTALL_FAILED_UPDATE_INCOMPATIBLE") {
+    Write-Host "⚠️ Phát hiện phiên bản cũ trên máy không khớp chữ ký (signature mismatch)." -ForegroundColor Yellow
+    Write-Host "🔄 Đang tự động gỡ phiên bản cũ và cài lại..." -ForegroundColor Cyan
+    adb -s $deviceId uninstall $appPackage | Out-Null
+    $installOutput = adb -s $deviceId install -r -t -d $apkPath
+    $installText = $installOutput -join " "
+}
+
 if ($LASTEXITCODE -ne 0 -or ($installText -notmatch "Success")) {
     Write-Host "❌ Cài đặt thất bại: $installText" -ForegroundColor Red
-    Write-Host "Lưu ý: Nếu điện thoại hiện thông báo xác nhận cài qua USB, hãy chọn Đồng ý/Cho phép." -ForegroundColor Yellow
+    if ($installText -match "VERIFICATION_FAILURE") {
+        Write-Host "👉 Hãy kiểm tra điện thoại: Tắt 'Kiểm tra ứng dụng qua USB' (Verify apps over USB) hoặc tắt tạm Play Protect." -ForegroundColor Yellow
+    } else {
+        Write-Host "Lưu ý: Nếu điện thoại hiện thông báo xác nhận cài qua USB, hãy chọn Đồng ý/Cho phép." -ForegroundColor Yellow
+    }
     exit 1
 }
 Write-Host "✅ Cài đặt APK thành công!" -ForegroundColor Green
 
 # 5. Khởi chạy ứng dụng
 Write-Host "`n🚀 [4/4] Đang mở ứng dụng trên điện thoại..." -ForegroundColor Yellow
-$appPackage = "com.carled.app"
-$mainActivity = "com.carled.app.MainActivity"
 
 adb -s $deviceId shell am start -n "$appPackage/$mainActivity" | Out-Null
 Start-Sleep -Seconds 1

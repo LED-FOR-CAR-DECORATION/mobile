@@ -3,6 +3,8 @@ package com.carled.app.presentation.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -22,39 +24,53 @@ import com.carled.app.presentation.screens.store.StoreScreen
 import com.carled.app.presentation.screens.store.StoreViewModel
 import com.carled.app.presentation.screens.upload.UploadScreen
 import com.carled.app.presentation.screens.upload.UploadViewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun AppNavigation(
     navController: NavHostController = rememberNavController()
 ) {
     // Shared ViewModels qua ServiceLocator
-    val controlViewModel = ControlViewModel(ServiceLocator.bleUseCases)
-    val scanViewModel = ScanViewModel(ServiceLocator.bleUseCases)
+    val controlViewModel = remember { ControlViewModel(ServiceLocator.bleUseCases) }
+    val scanViewModel = remember { ScanViewModel(ServiceLocator.bleUseCases) }
     val scanUiState by scanViewModel.uiState.collectAsState()
+    val currentUser by ServiceLocator.authRepository.getCurrentUser().collectAsState(initial = null)
+    val coroutineScope = rememberCoroutineScope()
+
+    // Khởi tạo điểm bắt đầu dựa trên trạng thái đã đăng nhập hay chưa
+    val startDestination = if (ServiceLocator.userPreferences.getAuthToken().isNullOrBlank()) {
+        NavRoute.Login.route
+    } else {
+        NavRoute.Main.route
+    }
 
     NavHost(
         navController = navController,
-        startDestination = NavRoute.Main.route
+        startDestination = startDestination
     ) {
         // Màn hình chính phong cách Divoom (5 Tabs)
         composable(NavRoute.Main.route) {
             MainContainerScreen(
                 controlViewModel = controlViewModel,
                 connectionState = scanUiState.connectionState,
+                currentUser = currentUser,
                 onOpenScanner = { navController.navigate(NavRoute.Scan.route) },
                 onOpenCanvas = { navController.navigate(NavRoute.Canvas.route) },
                 onOpenMarquee = { navController.navigate(NavRoute.Marquee.route) },
                 onOpenUpload = { navController.navigate(NavRoute.Upload.route) },
                 onOpenStore = { navController.navigate(NavRoute.Store.route) },
                 onLogout = {
-                    navController.navigate(NavRoute.Login.route) {
-                        popUpTo(NavRoute.Main.route) { inclusive = true }
+                    coroutineScope.launch {
+                        ServiceLocator.logoutUseCase()
+                        navController.navigate(NavRoute.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
                     }
                 }
             )
         }
 
-        // Quét & Kết nối Bluetooth phong cách Divoom (Ảnh 2 & 3)
+        // Quét & Kết nối Bluetooth phong cách Divoom
         composable(NavRoute.Scan.route) {
             DivoomScanScreen(
                 viewModel = scanViewModel,
@@ -63,8 +79,10 @@ fun AppNavigation(
         }
 
         // Bảng vẽ Live Canvas Pixel 64x32
-        composable(NavRoute.Canvas.route) {
-            val canvasViewModel = CanvasViewModel(ServiceLocator.bleUseCases)
+        composable(NavRoute.Canvas.route) { backStackEntry ->
+            val canvasViewModel = remember(backStackEntry) {
+                CanvasViewModel(ServiceLocator.bleUseCases)
+            }
             CanvasScreen(
                 viewModel = canvasViewModel,
                 onNavigateBack = { navController.popBackStack() }
@@ -72,8 +90,10 @@ fun AppNavigation(
         }
 
         // Bộ soạn thảo chữ LED chạy chữ (Marquee Text)
-        composable(NavRoute.Marquee.route) {
-            val marqueeViewModel = MarqueeViewModel(ServiceLocator.bleUseCases)
+        composable(NavRoute.Marquee.route) { backStackEntry ->
+            val marqueeViewModel = remember(backStackEntry) {
+                MarqueeViewModel(ServiceLocator.bleUseCases)
+            }
             MarqueeScreen(
                 viewModel = marqueeViewModel,
                 onNavigateBack = { navController.popBackStack() }
@@ -81,8 +101,10 @@ fun AppNavigation(
         }
 
         // Nạp ảnh nhị phân Flash SPIFFS
-        composable(NavRoute.Upload.route) {
-            val uploadViewModel = UploadViewModel(ServiceLocator.bleUseCases)
+        composable(NavRoute.Upload.route) { backStackEntry ->
+            val uploadViewModel = remember(backStackEntry) {
+                UploadViewModel(ServiceLocator.bleUseCases)
+            }
             UploadScreen(
                 viewModel = uploadViewModel,
                 onNavigateBack = { navController.popBackStack() }
@@ -90,17 +112,24 @@ fun AppNavigation(
         }
 
         // Cửa hàng Car LED eStore (Flow 1 E-commerce)
-        composable(NavRoute.Store.route) {
-            val storeViewModel = StoreViewModel(ServiceLocator.productRepository)
+        composable(NavRoute.Store.route) { backStackEntry ->
+            val storeViewModel = remember(backStackEntry) {
+                StoreViewModel(ServiceLocator.productRepository)
+            }
             StoreScreen(
                 viewModel = storeViewModel,
                 onNavigateBack = { navController.popBackStack() }
             )
         }
 
-        // Đăng nhập
-        composable(NavRoute.Login.route) {
-            val loginViewModel = LoginViewModel(ServiceLocator.loginUseCase)
+        // Màn hình Đăng nhập & Đăng ký phong cách Retro Pixel (Figma LEDSCREEN)
+        composable(NavRoute.Login.route) { backStackEntry ->
+            val loginViewModel = remember(backStackEntry) {
+                LoginViewModel(
+                    loginUseCase = ServiceLocator.loginUseCase,
+                    registerUseCase = ServiceLocator.registerUseCase
+                )
+            }
             LoginScreen(
                 viewModel = loginViewModel,
                 onLoginSuccess = {

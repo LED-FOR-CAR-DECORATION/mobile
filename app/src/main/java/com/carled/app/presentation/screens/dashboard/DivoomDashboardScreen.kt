@@ -56,7 +56,6 @@ fun DivoomDashboardScreen(
     val uiState by viewModel.uiState.collectAsState()
     val led = uiState.ledState
 
-    var showColorPickerModal by remember { mutableStateOf(false) }
     var showSensitivityModal by remember { mutableStateOf(false) }
 
     Column(
@@ -271,7 +270,7 @@ fun DivoomDashboardScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 4. Hai nút phụ: Trung tâm hỗ trợ & Cài đặt thiết bị
+        // 4. Hai nút phụ: Tìm & Ghép Bluetooth & Cài đặt thiết bị
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -279,26 +278,28 @@ fun DivoomDashboardScreen(
             Button(
                 onClick = onOpenScanner,
                 modifier = Modifier
-                    .weight(1f)
-                    .height(46.dp),
+                    .weight(1.35f)
+                    .height(48.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = DivoomCard),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.BluetoothSearching,
                     contentDescription = null,
-                    tint = DivoomTextMuted,
+                    tint = NeonGreen,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Tìm & Ghép Bluetooth", color = Color.White, fontSize = 12.sp)
+                Text("Tìm & Ghép Bluetooth", color = Color.White, fontSize = 12.sp, maxLines = 1)
             }
 
             Button(
                 onClick = { showSensitivityModal = true },
                 modifier = Modifier
-                    .weight(1f)
-                    .height(46.dp),
+                    .weight(0.75f)
+                    .height(48.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = DivoomCard),
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -308,8 +309,8 @@ fun DivoomDashboardScreen(
                     tint = DivoomTextMuted,
                     modifier = Modifier.size(18.dp)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Cài đặt thiết bị", color = Color.White, fontSize = 12.sp)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Cài đặt", color = Color.White, fontSize = 12.sp, maxLines = 1)
             }
         }
 
@@ -326,20 +327,13 @@ fun DivoomDashboardScreen(
 
         val features = listOf(
             DivoomFeatureItem("paint", "Thiết kế", Icons.Default.Palette, Color(0xFFFF5252), onOpenCanvas),
-            DivoomFeatureItem("anim", "Hoạt hình", Icons.Default.VideoLibrary, Color(0xFFFFA726), onOpenGallery),
-            DivoomFeatureItem("marquee", "Bộ sửa LED", Icons.Default.TextFields, Color(0xFF00E676), onOpenMarquee),
-            DivoomFeatureItem("color", "Màu sắc", Icons.Default.ColorLens, Color(0xFFE040FB)) { showColorPickerModal = true },
-            DivoomFeatureItem("music", "Âm nhạc", Icons.Default.MusicNote, Color(0xFFFF4081)) { viewModel.setMode(LedMode.MUSIC_REACTIVE) },
-            DivoomFeatureItem("rainbow", "Cầu vồng", Icons.Default.GraphicEq, Color(0xFF40C4FF)) { viewModel.setMode(LedMode.RAINBOW_WAVE) },
-            DivoomFeatureItem("mic", "Độ nhạy Mic", Icons.Default.Mic, Color(0xFFFFD740)) { showSensitivityModal = true },
-            DivoomFeatureItem("upload", "Nạp ảnh SPIFFS", Icons.Default.CloudUpload, Color(0xFF69F0AE), onOpenUpload),
-            DivoomFeatureItem("breathe", "Nhịp thở", Icons.Default.Favorite, Color(0xFFFF6E40)) { viewModel.setMode(LedMode.BREATHING) },
-            DivoomFeatureItem("chase", "Dòng chảy", Icons.Default.AutoMode, Color(0xFF7C4DFF)) { viewModel.setMode(LedMode.CHASE_FLOW) },
-            DivoomFeatureItem("sleep", "Chế độ ngủ", Icons.Default.Bedtime, Color(0xFF00B0FF)) { viewModel.setMode(LedMode.OFF) },
-            DivoomFeatureItem("store", "Divoom eStore", Icons.Default.ShoppingBag, Color(0xFFFFA000), onOpenStore)
+            DivoomFeatureItem("anim", "Hoạt ảnh", Icons.Default.VideoLibrary, Color(0xFFFFA726), onOpenGallery),
+            DivoomFeatureItem("marquee", "Văn bản", Icons.Default.TextFields, Color(0xFF00E676), onOpenMarquee),
+            DivoomFeatureItem("upload", "Nạp ảnh", Icons.Default.CloudUpload, Color(0xFF69F0AE), onOpenUpload),
+            DivoomFeatureItem("store", "Cửa hàng", Icons.Default.ShoppingBag, Color(0xFFFFA000), onOpenStore)
         )
 
-        // Render 12 features trong grid
+        // Render features trong grid (4 cột)
         val rows = features.chunked(4)
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             rows.forEach { rowItems ->
@@ -377,23 +371,16 @@ fun DivoomDashboardScreen(
                             )
                         }
                     }
+                    if (rowItems.size < 4) {
+                        repeat(4 - rowItems.size) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(30.dp))
-    }
-
-    // Modal chọn màu nhanh
-    if (showColorPickerModal) {
-        QuickColorDialog(
-            currentColor = led.currentColor,
-            onColorSelect = {
-                viewModel.setColor(it)
-                showColorPickerModal = false
-            },
-            onDismiss = { showColorPickerModal = false }
-        )
     }
 
     // Modal chỉnh độ nhạy micro bắt nhạc
@@ -457,70 +444,6 @@ private fun TopBannerCarousel(onBannerClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun QuickColorDialog(
-    currentColor: RgbColor,
-    onColorSelect: (RgbColor) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val presets = listOf(
-        RgbColor(255, 0, 0),      // Red
-        RgbColor(0, 255, 0),      // Green
-        RgbColor(0, 200, 255),    // Cyan
-        RgbColor(255, 165, 0),    // Orange
-        RgbColor(168, 85, 247),   // Purple
-        RgbColor(255, 0, 128),    // Pink
-        RgbColor(255, 255, 0),    // Yellow
-        RgbColor(255, 255, 255)   // White
-    )
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = DivoomCard,
-        title = {
-            Text("Chọn Màu Ánh Sáng Xe", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        },
-        text = {
-            Column {
-                Text("Chọn màu hiển thị trực tiếp lên đèn:", color = DivoomTextMuted, fontSize = 13.sp)
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    presets.chunked(4).forEach { colPresets ->
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            colPresets.forEach { color ->
-                                val composeColor = Color(color.red, color.green, color.blue)
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .clickable { onColorSelect(color) }
-                                        .padding(4.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(CircleShape)
-                                            .background(composeColor)
-                                            .border(1.dp, Color.White.copy(alpha = 0.3f), CircleShape)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(color.toHex(), color = Color.White, fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Đóng", color = DivoomGold)
-            }
-        }
-    )
-}
 
 @Composable
 private fun SensitivityDialog(

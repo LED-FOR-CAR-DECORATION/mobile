@@ -38,7 +38,8 @@ class CanvasViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
                             it.copy(
                                 pixels = Array(32) { IntArray(64) { 0xFF000000.toInt() } },
                                 lastEventFromDevice = "Bảng LED đã chuyển về nền đen tuyền ✓",
-                                isClearing = false
+                                isClearing = false,
+                                canvasVersion = it.canvasVersion + 1
                             )
                         }
                     }
@@ -106,6 +107,10 @@ class CanvasViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
         if (x !in 0 until 64 || y !in 0 until 32) return
         _uiState.update { it.copy(touchCoord = Pair(x, y)) }
 
+        if (_uiState.value.currentTool == CanvasTool.BUCKET) {
+            return
+        }
+
         val lp = lastPoint
         if (lp != null && (lp.first != x || lp.second != y)) {
             // Nối đường thẳng giữa 2 điểm
@@ -133,6 +138,7 @@ class CanvasViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
 
         val newPixels = _uiState.value.pixels.map { it.clone() }.toTypedArray()
         val radius = size - 1
+        var modified = false
 
         for (dy in -radius..radius) {
             for (dx in -radius..radius) {
@@ -142,11 +148,14 @@ class CanvasViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
                     if (newPixels[py][px] != argb) {
                         newPixels[py][px] = argb
                         batchBuffer.add(TouchPoint(px, py, r, g, b))
+                        modified = true
                     }
                 }
             }
         }
-        _uiState.update { it.copy(pixels = newPixels) }
+        if (modified) {
+            _uiState.update { it.copy(pixels = newPixels, canvasVersion = it.canvasVersion + 1) }
+        }
     }
 
     private fun drawLineBresenham(x0: Int, y0: Int, x1: Int, y1: Int) {
@@ -210,7 +219,7 @@ class CanvasViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
             }
         }
 
-        _uiState.update { it.copy(pixels = newPixels) }
+        _uiState.update { it.copy(pixels = newPixels, canvasVersion = it.canvasVersion + 1) }
     }
 
     private fun pushUndoState() {
@@ -228,7 +237,8 @@ class CanvasViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
         _uiState.update {
             it.copy(
                 pixels = previousState,
-                canUndo = undoStack.isNotEmpty()
+                canUndo = undoStack.isNotEmpty(),
+                canvasVersion = it.canvasVersion + 1
             )
         }
 
@@ -338,7 +348,7 @@ class CanvasViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
             }
         }
 
-        _uiState.update { it.copy(pixels = newPixels) }
+        _uiState.update { it.copy(pixels = newPixels, canvasVersion = it.canvasVersion + 1) }
         batchBuffer.clear()
         viewModelScope.launch {
             bleUseCases.clearCanvas()
@@ -380,12 +390,48 @@ class CanvasViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
             it.copy(
                 pixels = Array(32) { IntArray(64) { 0xFF000000.toInt() } },
                 isClearing = false,
-                lastEventFromDevice = "Đã chuyển bảng LED về nền đen (Opcode 0x15)"
+                lastEventFromDevice = "Đã chuyển bảng LED về nền đen (Opcode 0x15)",
+                canvasVersion = it.canvasVersion + 1
             )
         }
         batchBuffer.clear()
         viewModelScope.launch {
             bleUseCases.clearCanvas()
+        }
+    }
+
+    /**
+     * Ghi đè toàn bộ Canvas hiện tại vào bộ nhớ Flash (SPIFFS) của ESP32.
+     * Tương ứng tính năng "Lưu Vĩnh Viễn Lên Xe" (0x10 -> 0x11 -> 0x12) trong bộ test suite.
+     */
+    fun burnCanvasToFlash() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(feedbackMessage = "Đang lưu hình vào bộ nhớ xe (SPIFFS Flash)...") }
+            val data = ByteArray(64 * 32 * 2)
+            var idx = 0
+            val pixels = _uiState.value.pixels
+            for (y in 0 until 32) {
+                for (x in 0 until 64) {
+                    val px = pixels[y][x]
+                    val r = ((px shr 16) and 0xFF shr 3) and 0x1F
+                    val g = ((px shr 8) and 0xFF shr 2) and 0x3F
+                    val b = (px and 0xFF shr 3) and 0x1F
+                    val col565 = (r shl 11) or (g shl 5) or b
+                    data[idx++] = (col565 and 0xFF).toByte()
+                    data[idx++] = ((col565 shr 8) and 0xFF).toByte()
+                }
+            }
+            runCatching {
+                bleUseCases.uploadProjection(data)
+                _uiState.update {
+                    it.copy(
+                        feedbackMessage = "✅ Đã lưu hình vĩnh viễn lên Flash của xe!",
+                        lastEventFromDevice = "Đã lưu SPIFFS Flash thành công"
+                    )
+                }
+            }.onFailure { e ->
+                _uiState.update { it.copy(feedbackMessage = "❌ Lỗi lưu Flash: ${e.message}") }
+            }
         }
     }
 

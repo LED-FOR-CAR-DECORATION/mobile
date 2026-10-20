@@ -49,6 +49,26 @@ class AuthRepositoryImpl(
         }
     }
 
+    override suspend fun register(email: String, password: String): Resource<User> {
+        return try {
+            val response = apiService.register(LoginRequest(email, password))
+            userPreferences.saveAuthToken(response.token)
+            userPreferences.saveUser(response.user.id, response.user.email)
+
+            val domainUser = User(
+                id = response.user.id,
+                email = response.user.email,
+                fullName = response.user.fullName,
+                role = response.user.role,
+                token = response.token
+            )
+            _currentUser.value = domainUser
+            Resource.Success(domainUser)
+        } catch (e: Exception) {
+            Resource.Error(e.localizedMessage ?: "Đăng ký không thành công", e)
+        }
+    }
+
     override suspend fun logout(): Resource<Unit> {
         userPreferences.clear()
         _currentUser.value = null

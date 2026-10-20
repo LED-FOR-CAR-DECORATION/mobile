@@ -25,11 +25,44 @@ import com.carled.app.presentation.theme.*
 @Composable
 fun DivoomProfileScreen(
     userName: String = "Tài xế Car LED",
+    userEmail: String? = null,
     onOpenStore: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedSubTab by remember { mutableStateOf(1) } // 0: Thư viện máy, 1: Tải lên, 2: Yêu thích
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = {
+                Text("Xác nhận đăng xuất", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text("Bạn có chắc chắn muốn đăng xuất tài khoản khỏi ứng dụng Car LED không?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutDialog = false
+                        onLogout()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DivoomDanger)
+                ) {
+                    Text("Đăng xuất", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("Hủy", color = DivoomTextMuted)
+                }
+            },
+            containerColor = DivoomCard,
+            titleContentColor = Color.White,
+            textContentColor = Color.White.copy(alpha = 0.8f)
+        )
+    }
 
     Column(
         modifier = modifier
@@ -48,7 +81,7 @@ fun DivoomProfileScreen(
             IconButton(onClick = {}) {
                 Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
             }
-            IconButton(onClick = onLogout) {
+            IconButton(onClick = { showLogoutDialog = true }) {
                 Icon(Icons.Default.Logout, contentDescription = "Logout", tint = DivoomDanger)
             }
         }
@@ -110,7 +143,11 @@ fun DivoomProfileScreen(
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Bio: Chủ nhân CarLED Matrix 64x32", color = NeonGreen, fontSize = 11.sp)
+                Text(
+                    text = userEmail?.let { "Email: $it" } ?: "Bio: Chủ nhân CarLED Matrix 64x32",
+                    color = NeonGreen,
+                    fontSize = 11.sp
+                )
             }
         }
 
@@ -244,6 +281,34 @@ fun DivoomProfileScreen(
                         fontSize = 12.sp
                     )
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Nút đăng xuất tài khoản rõ ràng
+        Card(
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = DivoomCard),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showLogoutDialog = true }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(Icons.Default.Logout, contentDescription = null, tint = DivoomDanger, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Đăng Xuất Tài Khoản",
+                    color = DivoomDanger,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
             }
         }
 

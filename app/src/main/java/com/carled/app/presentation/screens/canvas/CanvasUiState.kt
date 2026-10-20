@@ -18,7 +18,8 @@ data class CanvasUiState(
     val feedbackMessage: String? = null,
     val lastEventFromDevice: String? = null,
     val showColorPicker: Boolean = false,
-    val touchCoord: Pair<Int, Int>? = null
+    val touchCoord: Pair<Int, Int>? = null,
+    val canvasVersion: Long = 0L
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -31,7 +32,8 @@ data class CanvasUiState(
                 feedbackMessage == other.feedbackMessage &&
                 lastEventFromDevice == other.lastEventFromDevice &&
                 showColorPicker == other.showColorPicker &&
-                touchCoord == other.touchCoord
+                touchCoord == other.touchCoord &&
+                canvasVersion == other.canvasVersion
     }
 
     override fun hashCode(): Int {
@@ -40,6 +42,7 @@ data class CanvasUiState(
         result = 31 * result + brushSize
         result = 31 * result + canUndo.hashCode()
         result = 31 * result + isClearing.hashCode()
+        result = 31 * result + canvasVersion.hashCode()
         return result
     }
 }

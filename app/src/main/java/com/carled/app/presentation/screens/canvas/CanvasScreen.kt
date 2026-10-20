@@ -1,10 +1,17 @@
 package com.carled.app.presentation.screens.canvas
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -40,6 +47,8 @@ fun CanvasScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var isDrawingOnCanvas by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
 
     // 1. Tự động khởi tạo bảng đen trên ESP32 ngay khi mở màn hình (Opcode 0x15)
     LaunchedEffect(Unit) {
@@ -54,10 +63,10 @@ fun CanvasScreen(
         }
     }
 
-    // 3. Tự ẩn thông báo sau 3 giây
-    LaunchedEffect(uiState.lastEventFromDevice) {
-        if (uiState.lastEventFromDevice != null) {
-            delay(3000)
+    // 3. Tự ẩn thông báo sau 3.5 giây
+    LaunchedEffect(uiState.lastEventFromDevice, uiState.feedbackMessage) {
+        if (uiState.lastEventFromDevice != null || uiState.feedbackMessage != null) {
+            delay(3500)
             viewModel.clearNotification()
         }
     }
@@ -77,6 +86,18 @@ fun CanvasScreen(
                     }
                 },
                 actions = {
+                    // Nút Lưu lên xe (Flash SPIFFS - 0x10 -> 0x11 -> 0x12)
+                    IconButton(
+                        onClick = { viewModel.burnCanvasToFlash() },
+                        enabled = !uiState.isClearing
+                    ) {
+                        Icon(
+                            Icons.Default.Save,
+                            contentDescription = "Lưu vào xe",
+                            tint = NeonGreen
+                        )
+                    }
+
                     // Nút Hoàn tác (Undo)
                     IconButton(
                         onClick = { viewModel.undo() },
@@ -99,35 +120,22 @@ fun CanvasScreen(
         },
         containerColor = DarkBackground
     ) { padding ->
-        Column(
+        Box(
             modifier = modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 14.dp)
-                .verticalScroll(rememberScrollState())
         ) {
-            Spacer(modifier = Modifier.height(6.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 14.dp)
+                    .verticalScroll(scrollState, enabled = !isDrawingOnCanvas)
+            ) {
+                Spacer(modifier = Modifier.height(10.dp))
 
-            // ── Device Notification Banner ──
-            if (uiState.lastEventFromDevice != null) {
+                // ── Header Canvas: Tọa độ & Tool Info ──
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(NeonGreen.copy(alpha = 0.15f))
-                        .border(1.dp, NeonGreen.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("● ", color = NeonGreen, fontWeight = FontWeight.Bold)
-                    Text(uiState.lastEventFromDevice!!, color = NeonGreen, fontSize = 12.sp)
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            // ── Header Canvas: Tọa độ & Tool Info ──
-            Row(
-                modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -167,43 +175,40 @@ fun CanvasScreen(
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color.Black)
                     .border(1.5.dp, DivoomBorder, RoundedCornerShape(10.dp))
+                    .pointerInput(viewModel) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            isDrawingOnCanvas = true
+                            val w = size.width.toFloat().coerceAtLeast(1f)
+                            val h = size.height.toFloat().coerceAtLeast(1f)
+                            val px0 = ((down.position.x / w) * 64f).toInt().coerceIn(0, 63)
+                            val py0 = ((down.position.y / h) * 32f).toInt().coerceIn(0, 31)
+                            viewModel.onTouchStart(px0, py0)
+
+                            try {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                    if (change == null || !change.pressed) {
+                                        break
+                                    }
+                                    change.consume()
+                                    val px = ((change.position.x / w) * 64f).toInt().coerceIn(0, 63)
+                                    val py = ((change.position.y / h) * 32f).toInt().coerceIn(0, 31)
+                                    viewModel.onTouchMove(px, py)
+                                }
+                            } finally {
+                                isDrawingOnCanvas = false
+                                viewModel.onTouchEnd()
+                            }
+                        }
+                    }
             ) {
                 LedPixelCanvas(
                     pixels = uiState.pixels,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onPress = { offset ->
-                                    val px = (offset.x / size.width * 64).toInt().coerceIn(0, 63)
-                                    val py = (offset.y / size.height * 32).toInt().coerceIn(0, 31)
-                                    viewModel.onTouchStart(px, py)
-                                    tryAwaitRelease()
-                                    viewModel.onTouchEnd()
-                                }
-                            )
-                        }
-                        .pointerInput(Unit) {
-                            detectDragGestures(
-                                onDragStart = { offset ->
-                                    val px = (offset.x / size.width * 64).toInt().coerceIn(0, 63)
-                                    val py = (offset.y / size.height * 32).toInt().coerceIn(0, 31)
-                                    viewModel.onTouchStart(px, py)
-                                },
-                                onDragEnd = {
-                                    viewModel.onTouchEnd()
-                                },
-                                onDragCancel = {
-                                    viewModel.onTouchEnd()
-                                },
-                                onDrag = { change, _ ->
-                                    change.consume()
-                                    val px = (change.position.x / size.width * 64).toInt().coerceIn(0, 63)
-                                    val py = (change.position.y / size.height * 32).toInt().coerceIn(0, 31)
-                                    viewModel.onTouchMove(px, py)
-                                }
-                            )
-                        }
+                    canvasVersion = uiState.canvasVersion,
+                    modifier = Modifier.fillMaxSize()
                 )
             }
 
@@ -370,9 +375,36 @@ fun CanvasScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(72.dp))
+        }
+
+        // ── Device Notification Banner (Hiển thị cố định ở phía dưới, không đẩy bảng đen) ──
+        val bannerText = uiState.lastEventFromDevice ?: uiState.feedbackMessage
+        AnimatedVisibility(
+            visible = bannerText != null,
+            enter = fadeIn() + slideInVertically { it },
+            exit = fadeOut() + slideOutVertically { it },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            if (bannerText != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF0F201B))
+                        .border(1.dp, NeonGreen.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("● ", color = NeonGreen, fontWeight = FontWeight.Bold)
+                    Text(bannerText, color = NeonGreen, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                }
+            }
         }
     }
+}
 
     // Modal chọn màu RGB tùy chỉnh
     if (uiState.showColorPicker) {
@@ -535,18 +567,19 @@ private fun CustomColorDialog(
 @Composable
 private fun LedPixelCanvas(
     pixels: Array<IntArray>,
+    canvasVersion: Long,
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier) {
+        val version = canvasVersion // Forces draw phase observation
         val cellW = size.width / 64f
         val cellH = size.height / 32f
         for (row in 0 until 32) {
             for (col in 0 until 64) {
                 val argb = pixels[row][col]
-                val color = Color(argb)
-                if (color != Color.Black) {
+                if (argb != 0xFF000000.toInt() && (argb and 0x00FFFFFF) != 0) {
                     drawRect(
-                        color = color,
+                        color = Color(argb),
                         topLeft = Offset(col * cellW, row * cellH),
                         size = Size(cellW - 0.4f, cellH - 0.4f)
                     )
@@ -554,7 +587,7 @@ private fun LedPixelCanvas(
             }
         }
         // Vẽ grid lines nhẹ để phân biệt pixel
-        val gridColor = Color.White.copy(alpha = 0.05f)
+        val gridColor = Color.White.copy(alpha = 0.08f)
         for (col in 0..64) {
             drawLine(gridColor, Offset(col * cellW, 0f), Offset(col * cellW, size.height), strokeWidth = 0.5f)
         }

@@ -13,6 +13,8 @@ import com.carled.app.domain.repository.BleDeviceRepository
 import com.carled.app.domain.repository.ProductRepository
 import com.carled.app.domain.usecase.ble.*
 import com.carled.app.domain.usecase.auth.LoginUseCase
+import com.carled.app.domain.usecase.auth.LogoutUseCase
+import com.carled.app.domain.usecase.auth.RegisterUseCase
 
 /**
  * ServiceLocator quản lý phụ thuộc (Dependency Injection) độc lập, gọn nhẹ.
@@ -86,5 +88,13 @@ object ServiceLocator {
 
     val loginUseCase: LoginUseCase by lazy {
         LoginUseCase(authRepository)
+    }
+
+    val registerUseCase: RegisterUseCase by lazy {
+        RegisterUseCase(authRepository)
+    }
+
+    val logoutUseCase: LogoutUseCase by lazy {
+        LogoutUseCase(authRepository)
     }
 }
