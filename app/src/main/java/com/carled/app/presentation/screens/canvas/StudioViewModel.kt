@@ -31,6 +31,7 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
     private val id = draftId ?: UUID.randomUUID().toString()
     private val writes = Mutex()
     private val changed = Channel<Unit>(Channel.CONFLATED)
+    private var resumeAfterSave = false
     private var wire: IntArray? = null
     private var generation = 0
     private val undo = ArrayDeque<PixelDocument>()
@@ -69,11 +70,21 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
                                 delay(40)
                                 if (epoch != generation) return@withLock false
                                 wire = IntArray(2048)
+                                resumeAfterSave = false
                             }
                             val current = requireNotNull(wire)
                             val target = livePixels(document)
                             val indices = target.indices.filter { target[it] != current[it] }.take(15)
                             if (indices.isEmpty()) { _state.update { it.copy(syncing = false) }; return@withLock false }
+                            if (resumeAfterSave) {
+                                // Firmware resets an uploaded image on the first live pixel.
+                                // Re-enter live mode explicitly, then replay the entire latest canvas.
+                                ble.clearCanvas()
+                                delay(40)
+                                if (epoch != generation) return@withLock false
+                                wire = IntArray(2048); resumeAfterSave = false
+                                return@withLock true
+                            }
                             _state.update { it.copy(syncing = true) }
                             ble.sendBatchDraw(indices.map { index ->
                                 val pixel = target[index]
@@ -193,6 +204,7 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
                         is TelemetryEvent.UploadComplete -> {
                             if (epoch != generation) error("Kết nối đã thay đổi trong khi lưu. Hãy kiểm tra và lưu lại.")
                             wire = livePixels(d)
+                            resumeAfterSave = true
                             feedback("LED đã xác nhận lưu vào bộ nhớ thiết bị (SPIFFS).")
                         }
                         is TelemetryEvent.UploadError -> feedback("Không gửi được: ${event.error}")

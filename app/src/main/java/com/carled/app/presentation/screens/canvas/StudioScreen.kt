@@ -102,7 +102,7 @@ fun StudioScreen(viewModel: StudioViewModel, onBack: () -> Unit, importOnOpen: B
                 if (doc.width == 64 && doc.height == 32) MirageCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(if (!state.connected) "LIVE · Chờ kết nối LED" else if (!state.liveEnabled) "LIVE · Đã tắt" else if (state.syncing) "LIVE · Đang đồng bộ…" else "LIVE · Đang bật", style = MaterialTheme.typography.titleMedium)
+                            Text(if (state.sending) "LIVE · Tạm dừng để lưu" else if (!state.connected) "LIVE · Chờ kết nối LED" else if (!state.liveEnabled) "LIVE · Đã tắt" else if (state.syncing) "LIVE · Đang đồng bộ…" else "LIVE · Đang bật", style = MaterialTheme.typography.titleMedium)
                             Text("Nét vẽ gửi trực tiếp. Chọn Lưu lên thiết bị LED để giữ lại sau khi tắt nguồn.", style = MaterialTheme.typography.bodySmall, color = MirageMuted)
                         }
                         Switch(state.liveEnabled, viewModel::live, enabled = !state.sending, modifier = Modifier.testTag("liveToggle"))

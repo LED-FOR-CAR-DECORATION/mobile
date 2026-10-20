@@ -26,13 +26,13 @@ class DiyLiveTest {
   override val connectionState=MutableStateFlow<ConnectionState>(ConnectionState.Connected("Test LED","test"))
   override val telemetryEvent=MutableSharedFlow<TelemetryEvent>(extraBufferCapacity=8)
   val board=IntArray(2048)
-  var clears=0;var batches=0;var uploads=0;var bytes:ByteArray?=null;var fail=false
-  override suspend fun clearCanvas() { clears++;board.fill(0) }
+  var clears=0;var batches=0;var uploads=0;var bytes:ByteArray?=null;var fail=false;var imageMode=false
+  override suspend fun clearCanvas() { clears++;board.fill(0);imageMode=false }
   override suspend fun sendBatchDraw(points:List<TouchPoint>) {
-   check(!fail) { "write rejected" };assertTrue(points.size<=15);batches++
+   check(!fail) { "write rejected" };if(imageMode) { board.fill(0);imageMode=false };assertTrue(points.size<=15);batches++
    points.forEach { board[it.y*64+it.x]=(it.r shl 16) or (it.g shl 8) or it.b }
   }
-  override suspend fun uploadProjection(rgb565Data:ByteArray) { uploads++;bytes=rgb565Data }
+  override suspend fun uploadProjection(rgb565Data:ByteArray) { uploads++;bytes=rgb565Data;imageMode=true }
  }
  private fun model(d:Device)=StudioViewModel(ServiceLocator.bleUseCases.copy(
   getConnectionState=GetConnectionStateUseCase(d),getTelemetryEvent=GetTelemetryEventUseCase(d),
@@ -69,7 +69,9 @@ class DiyLiveTest {
    d.telemetryEvent.tryEmit(TelemetryEvent.UploadComplete("ok",6))
   }
   compose.waitUntil(5000) { !vm.state.value.sending }
-  compose.runOnIdle { assertTrue(vm.state.value.feedback!!.contains("SPIFFS"));vm.live(false) }
+  compose.runOnIdle { assertTrue(vm.state.value.feedback!!.contains("SPIFFS"));vm.down(8,8);vm.end() }
+  settled(vm,d)
+  compose.runOnIdle { assertEquals(1,d.uploads);assertNotEquals(0,d.board[65]);assertNotEquals(0,d.board[520]);vm.live(false) }
  }
  @Test fun failurePausesLiveAndReconnectSynchronizesLatestCanvas() {
   val d=Device();val vm=model(d)

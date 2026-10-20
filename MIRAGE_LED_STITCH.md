@@ -29,3 +29,7 @@ Implementation: local DIY Gallery; separate mocked Character inventory using FE 
 ## V4 — Static marquee auto-fit
 
 `c4a85d787a524dfc92bfa93d980e8da9` — 07 Chạy chữ — Tự vừa màn hình V4. Mobile implements exact 64×32 pixel layout with5×7 /10×14 presets, word wrapping, size2→1 fallback, centered lines, and overflow validation. The rendered frame itself is uploaded through the existing projection protocol, so no firmware flash is needed. Existing scroll/blink JSON commands retain size1/2.
+
+## V5 — DIY LIVE
+
+`94be36dea83249d2a70cbe6a320540a7` — DIY Pixel LIVE V5. LIVE status/switch, clear canvas, existing pixel tools and phone photo import. Two separate sticky actions: Lưu lên thiết bị LED (SPIFFS, confirmed by device) and Lưu vào Gallery (phone, offline). Existing firmware opcodes are reused; no firmware update is required. Dense changes synchronize progressively; LIVE itself never saves Flash.

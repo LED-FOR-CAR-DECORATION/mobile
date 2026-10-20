@@ -97,3 +97,12 @@ mobile/
 ### Static marquee auto-fit
 
 The marquee screen exposes 5×7 and 10×14 glyph presets. Static mode centers and word-wraps the entire message within 64×32, reducing the preferred 10×14 preset to 5×7 if necessary. It uses up to four rows of readable 5×7 glyphs; longer text must be shortened or scrolled, never silently truncated or scaled below a pixel. Preview and transmitted RGB565 use the same layout. Static text uses the existing single-frame projection upload and waits for UploadComplete/UploadError; existing firmware does not need a flash. This writes the current projection slot, as photo upload does. Scroll/blink retain firmware marquee commands with size1/2. Font data derives from the firmware's Adafruit GFX classic ASCII font; license is bundled under assets/licenses/Adafruit-GFX.txt.
+
+### DIY LIVE and two save destinations
+
+On a connected64×32 canvas, LIVE sends the latest composite raster through existing clear(0x15)/batch-draw(0x14) firmware commands. Up to15 changed pixels are sent per40ms batch, coalescing old gesture positions; erase, fill, shapes, mirror, text overlays, undo/redo and image import converge to the same final frame. LIVE never invokes the flash upload protocol. Reconnection and re-enabling LIVE initialize and replay the current canvas. A write failure pauses LIVE and offers retry through its switch. Dense imports may take several seconds to synchronize.
+
+- **Lưu lên thiết bị LED**: serializes against LIVE, uploads the full64×32 frame into the firmware's current SPIFFS projection slot, and reports success only on UploadComplete; it does not save a Gallery draft. Existing device projection is replaced. Editing pauses during the flash transfer.
+- **Lưu vào Gallery**: saves the document, name and editable text blocks locally; works offline, does not write device flash.32×32/64×64 remain Gallery-only.
+
+The firmware sets uploaded patterns out of live-drawing mode. On the first subsequent edit the mobile explicitly reinitializes LIVE and replays the full canvas, preventing firmware's first-live-pixel reset from erasing previous artwork. No firmware flash required.
