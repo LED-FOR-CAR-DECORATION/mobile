@@ -2,6 +2,8 @@ package com.carled.app.presentation.screens.canvas
 
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -38,32 +40,70 @@ fun StudioScreen(viewModel: StudioViewModel, onBack: () -> Unit, importOnOpen: B
     var size by remember { mutableStateOf(64 to 32) }
     var panel by remember { mutableStateOf<String?>(null) }
     var leave by remember { mutableStateOf(false) }
-    var image by remember { mutableStateOf<Bitmap?>(null) }
+    var decoded by remember { mutableStateOf<GifFrameInfo?>(null) }
     var imageBusy by remember { mutableStateOf(false) }
     var imageError by remember { mutableStateOf<String?>(null) }
     var initialImport by remember { mutableStateOf(importOnOpen) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) scope.launch {
+
+    /**
+     * Decode ảnh từ URI, hỗ trợ cả ảnh tĩnh và GIF động.
+     */
+    fun decodeImageUri(uri: Uri) {
+        scope.launch {
             imageBusy = true; imageError = null
             try {
-                image = withContext(Dispatchers.IO) {
-                    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    context.contentResolver.openInputStream(uri).use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
-                    require(bounds.outWidth > 0 && bounds.outHeight > 0)
-                    var sample = 1
-                    while (max(bounds.outWidth, bounds.outHeight) / sample > 1024) sample *= 2
-                    val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
-                    context.contentResolver.openInputStream(uri).use {
-                        requireNotNull(android.graphics.BitmapFactory.decodeStream(it, null, options))
+                decoded = withContext(Dispatchers.IO) {
+                    val mimeType = context.contentResolver.getType(uri)
+                    val isGif = mimeType == "image/gif" || uri.toString().endsWith(".gif", ignoreCase = true)
+
+                    if (isGif) {
+                        // Thử decode GIF animation bằng GifDecoder
+                        val gifResult = context.contentResolver.openInputStream(uri)?.use { GifDecoder.decode(it) }
+
+                        if (gifResult != null && gifResult.isAnimated) {
+                            gifResult
+                        } else {
+                            // GIF tĩnh (1 frame) hoặc không decode được animation → fallback ảnh tĩnh
+                            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                            context.contentResolver.openInputStream(uri).use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+                            require(bounds.outWidth > 0 && bounds.outHeight > 0)
+                            var sample = 1
+                            while (max(bounds.outWidth, bounds.outHeight) / sample > 1024) sample *= 2
+                            val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+                            val bitmap = context.contentResolver.openInputStream(uri).use {
+                                requireNotNull(android.graphics.BitmapFactory.decodeStream(it, null, options))
+                            }
+                            GifFrameInfo(listOf(bitmap), 100, isAnimated = false)
+                        }
+                    } else {
+                        // Ảnh tĩnh (PNG, JPEG, WEBP…): dùng BitmapFactory
+                        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        context.contentResolver.openInputStream(uri).use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+                        require(bounds.outWidth > 0 && bounds.outHeight > 0)
+                        var sample = 1
+                        while (max(bounds.outWidth, bounds.outHeight) / sample > 1024) sample *= 2
+                        val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+                        val bitmap = context.contentResolver.openInputStream(uri).use {
+                            requireNotNull(android.graphics.BitmapFactory.decodeStream(it, null, options))
+                        }
+                        GifFrameInfo(listOf(bitmap), 100, isAnimated = false)
                     }
-                }; panel = "import"
+                }
+                panel = "import"
             } catch (e: Exception) { imageError = "Không thể đọc ảnh. Hãy chọn ảnh khác." }
             finally { imageBusy = false }
         }
     }
-    fun selectImage() { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) decodeImageUri(uri)
+    }
+    fun selectImage() {
+        // ImageOnly bao gồm cả GIF (image/gif). Không dùng ImageAndVideo để tránh hiện video.
+        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
     fun back() {
         if (state.sending) viewModel.feedback("Đang gửi nội dung. Chờ thiết bị phản hồi trước khi rời màn hình.")
         else if (state.dirty) leave = true else onBack()
@@ -121,7 +161,7 @@ fun StudioScreen(viewModel: StudioViewModel, onBack: () -> Unit, importOnOpen: B
                     shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, MirageInk)) {
                     Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Nhập ảnh từ thư viện")
+                    Text("Nhập ảnh / GIF từ thư viện")
                 }
                 InteractiveGrid(state, viewModel)
                 Text("Một ngón để vẽ · Hai ngón di chuyển và thu phóng", style = MaterialTheme.typography.bodySmall, color = MirageMuted)
@@ -160,7 +200,14 @@ fun StudioScreen(viewModel: StudioViewModel, onBack: () -> Unit, importOnOpen: B
             openText = { viewModel.tool(PixelTool.TEXT); panel = "text" },
             importImage = { panel = null; selectImage() })
         "text" -> PixelTextDialog(doc, state.color, viewModel) { panel = null }
-        "import" -> image?.let { ImportImageDialog(it, doc, { viewModel.importPixels(it); panel = null }, { panel = null }, ::selectImage) }
+        "import" -> decoded?.let { img ->
+            if (img.isAnimated) {
+                ImportGifDialog(img, doc, { frames, delay -> viewModel.importAnimation(frames, delay); panel = null },
+                    { viewModel.importPixels(it); panel = null }, { panel = null }, ::selectImage)
+            } else {
+                ImportImageDialog(img.first, doc, { viewModel.importPixels(it); panel = null }, { panel = null }, ::selectImage)
+            }
+        }
     }
 }
 

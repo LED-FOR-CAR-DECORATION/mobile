@@ -135,7 +135,15 @@ fun UploadScreen(
                             .background(Color.Black.copy(alpha = 0.7f))
                             .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
-                        Text("64 × 32 px • RGB565", color = DivoomGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (uiState.isAnimatedGif && uiState.gifFrameCount > 1)
+                                "64 × 32 px • GIF ${uiState.currentFrameIndex + 1}/${uiState.gifFrameCount}"
+                            else
+                                "64 × 32 px • RGB565",
+                            color = DivoomGold,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 } else {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -242,6 +250,24 @@ fun UploadScreen(
                 colors = SliderDefaults.colors(thumbColor = PrimaryCyan, activeTrackColor = PrimaryCyan)
             )
 
+            // ── Tốc độ Hoạt Ảnh GIF (nếu là GIF động) ──
+            if (uiState.isAnimatedGif && uiState.gifFrameCount > 1) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("TỐC ĐỘ HOẠT ẢNH GIF", color = DivoomTextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("${uiState.gifFrameDelayMs}ms (~${(1000f / uiState.gifFrameDelayMs).toInt()} FPS)", color = NeonGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+                Slider(
+                    value = uiState.gifFrameDelayMs.toFloat(),
+                    onValueChange = { viewModel.setFrameDelay(it.toInt()) },
+                    valueRange = 20f..1000f,
+                    colors = SliderDefaults.colors(thumbColor = NeonGreen, activeTrackColor = NeonGreen)
+                )
+            }
+
             Spacer(modifier = Modifier.height(14.dp))
 
             // ── Feedback Toast / Telemetry Status ──
@@ -309,7 +335,15 @@ fun UploadScreen(
                 } else {
                     Icon(Icons.Default.CloudUpload, contentDescription = null, tint = DarkBackground)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("🚀 Chiếu Lên LED Qua Bluetooth BLE", color = DarkBackground, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(
+                        text = if (uiState.isAnimatedGif && uiState.gifFrameCount > 1)
+                            "🚀 Chiếu Hoạt Ảnh GIF Lên LED (${uiState.gifFrameCount} Frame)"
+                        else
+                            "🚀 Chiếu Lên LED Qua Bluetooth BLE",
+                        color = DarkBackground,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
                 }
             }
 
@@ -317,4 +351,3 @@ fun UploadScreen(
         }
     }
 }
-

@@ -123,13 +123,7 @@ fun ImportImageDialog(image: Bitmap, doc: PixelDocument, apply: (List<Int>) -> U
     var confirm by remember { mutableStateOf(false) }
     var alignX by remember { mutableFloatStateOf(.5f) }; var alignY by remember { mutableFloatStateOf(.5f) }
     val pixels = remember(image, doc.width, doc.height, crop, alignX, alignY) {
-        val scale = if (crop) max(doc.width.toFloat() / image.width, doc.height.toFloat() / image.height) else min(doc.width.toFloat() / image.width, doc.height.toFloat() / image.height)
-        val dw = image.width * scale; val dh = image.height * scale
-        val ox = (doc.width - dw) * alignX; val oy = (doc.height - dh) * alignY
-        List(doc.width * doc.height) { i ->
-            val sx = floor((i % doc.width + .5f - ox) / scale).toInt(); val sy = floor((i / doc.width + .5f - oy) / scale).toInt()
-            if (sx in 0 until image.width && sy in 0 until image.height) image.getPixel(sx, sy).let { if (it ushr 24 == 0) 0 else it or 0xff000000.toInt() } else 0
-        }
+        rasterizeBitmapToPixels(image, doc.width, doc.height, crop, alignX, alignY)
     }
     AlertDialog(onDismissRequest = close, title = { Text("Nhập ảnh") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -147,4 +141,144 @@ fun ImportImageDialog(image: Bitmap, doc: PixelDocument, apply: (List<Int>) -> U
     }, confirmButton = { TextButton(onClick = { confirm = true }) { Text("Nhập vào canvas") } }, dismissButton = { TextButton(onClick = close) { Text("Hủy") } })
     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("Thay lớp pixel?") }, text = { Text("Ảnh thay thế lớp pixel hiện tại. Lớp chữ giữ nguyên; bạn có thể hoàn tác.") },
         confirmButton = { TextButton(onClick = { confirm = false; apply(pixels) }) { Text("Thay thế") } }, dismissButton = { TextButton(onClick = { confirm = false }) { Text("Hủy") } })
+}
+
+/**
+ * Dialog nhập ảnh GIF động: cho phép chọn nhập frame đầu tiên (ảnh tĩnh)
+ * hoặc nhập tất cả frame dưới dạng animation gửi lên LED.
+ */
+@Composable
+fun ImportGifDialog(
+    gif: GifFrameInfo,
+    doc: PixelDocument,
+    applyAnimation: (List<List<Int>>, Int) -> Unit,
+    applyStatic: (List<Int>) -> Unit,
+    close: () -> Unit,
+    choose: () -> Unit
+) {
+    var crop by remember { mutableStateOf(false) }
+    var confirm by remember { mutableStateOf(false) }
+    var mode by remember { mutableStateOf("animation") } // "animation" hoặc "static"
+    var alignX by remember { mutableFloatStateOf(.5f) }
+    var alignY by remember { mutableFloatStateOf(.5f) }
+    var delayMs by remember { mutableIntStateOf(gif.frameDelayMs.coerceIn(20, 1000)) }
+    var previewFrame by remember { mutableIntStateOf(0) }
+
+    // Xem trước animation tự động
+    LaunchedEffect(gif.frames.size, delayMs) {
+        if (gif.frames.size > 1 && mode == "animation") {
+            while (true) {
+                kotlinx.coroutines.delay(delayMs.toLong())
+                previewFrame = (previewFrame + 1) % gif.frames.size
+            }
+        }
+    }
+
+    val currentFrame = gif.frames[previewFrame.coerceIn(0, gif.frames.lastIndex)]
+
+    // Rasterize frame hiện tại để xem trước
+    val previewPixels = remember(currentFrame, doc.width, doc.height, crop, alignX, alignY) {
+        rasterizeBitmapToPixels(currentFrame, doc.width, doc.height, crop, alignX, alignY)
+    }
+
+    AlertDialog(onDismissRequest = close, title = { Text("Nhập GIF · ${gif.frames.size} frame") }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Xem trước GIF gốc (frame hiện tại)
+            Image(currentFrame.asImageBitmap(), "GIF frame $previewFrame", Modifier.fillMaxWidth().height(100.dp))
+            Text("Frame ${previewFrame + 1}/${gif.frames.size}", style = MaterialTheme.typography.bodySmall, color = MirageMuted)
+
+            // Xem trước trên ma trận LED
+            Text("Xem trước ${doc.width}×${doc.height}")
+            PixelPreview(doc.copy(pixels = previewPixels), Modifier.fillMaxWidth().aspectRatio(doc.width.toFloat() / doc.height))
+
+            // Chọn chế độ nhập
+            Text("Chế độ nhập", style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(mode == "animation", { mode = "animation"; previewFrame = 0 },
+                    label = { Text("Animation (${gif.frames.size} frame)") })
+                FilterChip(mode == "static", { mode = "static"; previewFrame = 0 },
+                    label = { Text("Chỉ frame đầu") })
+            }
+
+            // Tùy chọn căn chỉnh
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(!crop, { crop = false }, label = { Text("Thu vừa") })
+                FilterChip(crop, { crop = true }, label = { Text("Cắt đầy") })
+            }
+            Text("Căn ngang"); Slider(alignX, { alignX = it })
+            Text("Căn dọc"); Slider(alignY, { alignY = it })
+
+            // Tốc độ animation (chỉ khi chọn animation)
+            if (mode == "animation") {
+                Text("Tốc độ animation", style = MaterialTheme.typography.titleSmall)
+                Text("${delayMs} ms/frame · ${(1000f / delayMs).roundToInt()} FPS", color = MirageMuted)
+                Slider(
+                    value = delayMs.toFloat(),
+                    onValueChange = { delayMs = it.roundToInt() },
+                    valueRange = 20f..1000f,
+                    steps = 0
+                )
+                if (gif.frames.size > 60) {
+                    Text("⚠ GIF có ${gif.frames.size} frame. Tối đa 60 frame sẽ được gửi lên LED.",
+                        color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            TextButton(onClick = choose) { Text("Chọn ảnh khác") }
+        }
+    }, confirmButton = {
+        TextButton(onClick = { confirm = true }) {
+            Text(if (mode == "animation") "Nhập animation" else "Nhập frame đầu")
+        }
+    }, dismissButton = { TextButton(onClick = close) { Text("Hủy") } })
+
+    if (confirm) AlertDialog(
+        onDismissRequest = { confirm = false },
+        title = { Text(if (mode == "animation") "Nhập animation?" else "Thay lớp pixel?") },
+        text = {
+            Text(if (mode == "animation")
+                "Animation ${gif.frames.size.coerceAtMost(60)} frame sẽ thay thế canvas hiện tại. Lớp chữ giữ nguyên."
+            else
+                "Ảnh thay thế lớp pixel hiện tại. Lớp chữ giữ nguyên; bạn có thể hoàn tác."
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                confirm = false
+                if (mode == "animation") {
+                    val allFramePixels = gif.frames.take(60).map { frame ->
+                        rasterizeBitmapToPixels(frame, doc.width, doc.height, crop, alignX, alignY)
+                    }
+                    applyAnimation(allFramePixels, delayMs)
+                } else {
+                    applyStatic(rasterizeBitmapToPixels(gif.first, doc.width, doc.height, crop, alignX, alignY))
+                }
+            }) { Text("Thay thế") }
+        },
+        dismissButton = { TextButton(onClick = { confirm = false }) { Text("Hủy") } }
+    )
+}
+
+/**
+ * Hàm chung: scale + crop bitmap vào kích thước canvas LED.
+ */
+private fun rasterizeBitmapToPixels(
+    image: Bitmap,
+    width: Int,
+    height: Int,
+    crop: Boolean,
+    alignX: Float,
+    alignY: Float
+): List<Int> {
+    val scale = if (crop) max(width.toFloat() / image.width, height.toFloat() / image.height)
+    else min(width.toFloat() / image.width, height.toFloat() / image.height)
+    val dw = image.width * scale; val dh = image.height * scale
+    val ox = (width - dw) * alignX; val oy = (height - dh) * alignY
+    return List(width * height) { i ->
+        val sx = floor((i % width + .5f - ox) / scale).toInt()
+        val sy = floor((i / width + .5f - oy) / scale).toInt()
+        if (sx in 0 until image.width && sy in 0 until image.height)
+            image.getPixel(sx, sy).let { if (it ushr 24 == 0) 0 else it or 0xff000000.toInt() }
+        else 0
+    }
 }

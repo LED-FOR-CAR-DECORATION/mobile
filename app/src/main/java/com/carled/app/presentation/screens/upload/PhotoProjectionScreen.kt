@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.carled.app.domain.model.ConnectionState
 import com.carled.app.presentation.components.*
+import kotlin.math.roundToInt
 
 @Composable
 fun PhotoProjectionScreen(vm: UploadViewModel, back: () -> Unit, scan: () -> Unit, character: com.carled.app.data.local.OwnedCharacter? = null) {
@@ -29,7 +30,13 @@ fun PhotoProjectionScreen(vm: UploadViewModel, back: () -> Unit, scan: () -> Uni
             if (character == null) MirageButton(if (state.previewDocument == null) "Chọn ảnh từ điện thoại" else "Đổi ảnh", { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, Modifier.fillMaxWidth(), enabled = editable)
             else Text("Dữ liệu mẫu · ${character.entitlementId} · ${character.sourceType}", color = MirageMuted)
             MirageCard {
-                Text("Xem trước LED · 64×32", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (state.isAnimatedGif && state.gifFrameCount > 1)
+                        "Xem trước LED · 64×32 (Frame ${state.currentFrameIndex + 1}/${state.gifFrameCount})"
+                    else
+                        "Xem trước LED · 64×32",
+                    style = MaterialTheme.typography.titleMedium
+                )
                 if (state.previewDocument != null) PixelPreview(state.previewDocument, Modifier.fillMaxWidth().aspectRatio(2f))
                 else Box(Modifier.fillMaxWidth().aspectRatio(2f).background(MirageInk).padding(20.dp)) { Text(if (state.isLoadingImage) "Đang đọc ảnh…" else "Chọn ảnh để xem trước", color = androidx.compose.ui.graphics.Color.White) }
                 if (state.isProcessing || state.isLoadingImage) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -42,6 +49,15 @@ fun PhotoProjectionScreen(vm: UploadViewModel, back: () -> Unit, scan: () -> Uni
             Slider(state.brightnessPercent.toFloat(), { vm.setBrightness(it.toInt()) }, valueRange = 40f..220f, enabled = editable && state.previewDocument != null)
             Text("Độ tương phản · ${state.contrastPercent}%")
             Slider(state.contrastPercent.toFloat(), { vm.setContrast(it.toInt()) }, valueRange = 40f..220f, enabled = editable && state.previewDocument != null)
+            if (state.isAnimatedGif && state.gifFrameCount > 1) {
+                Text("Tốc độ phát GIF · ${state.gifFrameDelayMs} ms/frame (${(1000f / state.gifFrameDelayMs).roundToInt()} FPS)")
+                Slider(
+                    value = state.gifFrameDelayMs.toFloat(),
+                    onValueChange = { vm.setFrameDelay(it.roundToInt()) },
+                    valueRange = 20f..1000f,
+                    enabled = editable
+                )
+            }
             Text("Các thanh này chỉnh ảnh xem trước; độ sáng thiết bị chỉnh trong Điều khiển LED.", style = MaterialTheme.typography.bodySmall, color = MirageMuted)
             if (connection !is ConnectionState.Connected) MirageButton("Kết nối LED", scan, Modifier.fillMaxWidth(), enabled = !state.isUploading, secondary = true)
             MirageButton(if (state.isUploading) "Đang chiếu…" else "Chiếu lên LED", vm::startUpload, Modifier.fillMaxWidth(), enabled = connection is ConnectionState.Connected && state.previewDocument != null && editable && !state.isProcessing)

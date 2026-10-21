@@ -27,6 +27,13 @@ data class UploadUiState(
     val brightnessPercent: Int = 100, // 40..220%
     val contrastPercent: Int = 100, // 40..220%
 
+    // GIF animation support
+    val isAnimatedGif: Boolean = false,
+    val gifFrameCount: Int = 1,
+    val gifFrameDelayMs: Int = 100,
+    val currentFrameIndex: Int = 0,
+    val previewFrames: List<com.carled.app.domain.model.PixelDocument> = emptyList(),
+
     // Telemetry events
     val uploadExpectedBytes: Int = 0,
     val uploadStatus: UploadStatus = UploadStatus.Idle,
@@ -40,4 +47,3 @@ enum class UploadStatus {
     Complete, // upload_complete received
     Error // upload_error received
 }
-

@@ -177,6 +177,73 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
     }
     fun deleteText(id: String) { _state.value.document?.let { commit(it.copy(texts = it.texts.filterNot { b -> b.id == id })) } }
     fun importPixels(pixels: List<Int>) { _state.value.document?.let { commit(it.copy(pixels = pixels)) } }
+
+    /**
+     * Nhập animation GIF: chuyển đổi các frame thành dữ liệu RGB565 nhiều frame
+     * và gửi qua giao thức projection upload (0x10 → 0x11 → 0x12).
+     * Frame đầu tiên cũng được import vào canvas để xem trước.
+     */
+    fun importAnimation(frames: List<List<Int>>, frameDelayMs: Int) {
+        if (_state.value.sending) return
+        val d = _state.value.document ?: return
+        if (d.width != 64 || d.height != 32) {
+            feedback("Animation GIF chỉ gửi được lên ma trận 64×32. Hãy tạo canvas đúng kích thước.")
+            return
+        }
+        if (!_state.value.connected) {
+            // Vẫn import frame đầu vào canvas để xem trước
+            frames.firstOrNull()?.let { importPixels(it) }
+            feedback("Đã nhập frame đầu tiên. Kết nối thiết bị LED để gửi animation ${frames.size} frame.")
+            return
+        }
+        // Import frame đầu vào canvas để xem trước
+        frames.firstOrNull()?.let { firstFrame ->
+            commit(d.copy(pixels = firstFrame))
+        }
+
+        // Gửi animation lên LED
+        _state.update { it.copy(sending = true, feedback = "Đang gửi animation ${frames.size} frame lên LED…") }
+        viewModelScope.launch {
+            try {
+                writes.withLock {
+                    val epoch = generation
+                    // Chuyển đổi tất cả frame sang RGB565
+                    val rgb565Data = ByteArray(64 * 32 * 2 * frames.size)
+                    var offset = 0
+                    for (frame in frames) {
+                        for (pixel in frame) {
+                            val r = ((pixel ushr 19) and 31)
+                            val g = ((pixel ushr 10) and 63)
+                            val b = ((pixel ushr 3) and 31)
+                            val value = (r shl 11) or (g shl 5) or b
+                            rgb565Data[offset++] = (value and 255).toByte()
+                            rgb565Data[offset++] = (value ushr 8).toByte()
+                        }
+                    }
+                    coroutineScope {
+                        val ack = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(60_000) {
+                            ble.getTelemetryEvent().first { it is TelemetryEvent.UploadComplete || it is TelemetryEvent.UploadError }
+                        } }
+                        ble.uploadProjection(rgb565Data, frames.size, frameDelayMs)
+                        when (val event = ack.await()) {
+                            is TelemetryEvent.UploadComplete -> {
+                                if (epoch != generation) error("Kết nối đã thay đổi trong khi gửi. Hãy kiểm tra và gửi lại.")
+                                wire = null
+                                resumeAfterSave = true
+                                feedback("✅ LED đã nhận animation ${frames.size} frame · ${frameDelayMs}ms/frame")
+                            }
+                            is TelemetryEvent.UploadError -> feedback("Không gửi được animation: ${event.error}")
+                            else -> Unit
+                        }
+                    }
+                }
+            } catch (e: TimeoutCancellationException) { feedback("Chưa nhận xác nhận từ LED. Animation có thể quá lớn — kiểm tra kết nối.") }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { feedback("Không gửi được animation: ${e.message}") }
+            finally { _state.update { it.copy(sending = false) }; changed.trySend(Unit) }
+        }
+    }
+
     fun palettes(value: List<PixelPalette>) {
         viewModelScope.launch { runCatching { withContext(Dispatchers.IO) { store.savePalettes(value) } }
             .onSuccess { _state.update { it.copy(palettes = value) } }.onFailure { feedback("Không thể lưu bảng màu: ${it.message}") } }
