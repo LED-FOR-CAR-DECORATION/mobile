@@ -83,7 +83,7 @@ fun StudioScreen(viewModel: StudioViewModel, onBack: () -> Unit, importOnOpen: B
             MirageButton("Lưu vào Gallery", viewModel::save, Modifier.fillMaxWidth().testTag("saveToGallery"), enabled = !state.sending, secondary = true)
         }
     }, containerColor = MirageBackground) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.testTag("studioScroll").padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (doc == null) {
                 Text("Bắt đầu từ từng điểm ảnh", style = MaterialTheme.typography.headlineSmall)
                 Text("Chọn độ phân giải cho thiết kế mới. Kích thước được giữ nguyên khi lưu bản nháp.", color = MirageMuted)
@@ -139,7 +139,7 @@ fun StudioScreen(viewModel: StudioViewModel, onBack: () -> Unit, importOnOpen: B
                         FilterChip(selected = state.tool == tool, onClick = { viewModel.tool(tool) }, label = { Text(label) })
                     }
                     AssistChip(onClick = { panel = "colors" }, label = { Text("Màu") })
-                    AssistChip(onClick = { panel = "tools" }, label = { Text("Thêm") })
+                    AssistChip(onClick = { panel = "tools" }, label = { Text("Công cụ") })
                 }
                 if (state.tool == PixelTool.PICKER) Text("Chạm pixel để lấy màu. Chọn Bút để hủy.")
                 if (state.mirror != MirrorMode.NONE) Text("Đối xứng: ${mirrorLabel(state.mirror)}", color = MirageMuted)
@@ -156,21 +156,9 @@ fun StudioScreen(viewModel: StudioViewModel, onBack: () -> Unit, importOnOpen: B
         confirmButton = { TextButton(onClick = { leave = false; onBack() }) { Text("Bỏ thay đổi") } }, dismissButton = { TextButton(onClick = { leave = false }) { Text("Tiếp tục vẽ") } })
     if (doc != null) when (panel) {
         "colors" -> PaletteDialog(state, viewModel) { panel = null }
-        "tools" -> AlertDialog(onDismissRequest = { panel = null }, title = { Text("Công cụ & đối xứng") }, text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Hình dạng")
-                PixelShape.entries.forEach { shape ->
-                    FilterChip(selected = state.shape == shape && state.tool == PixelTool.SHAPE, onClick = { viewModel.shape(shape, state.filled) }, label = { Text(when(shape) { PixelShape.LINE -> "Đường thẳng"; PixelShape.RECTANGLE -> "Chữ nhật"; PixelShape.ELLIPSE -> "Elip" }) })
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(state.filled, { viewModel.shape(state.shape, it) }, enabled = state.shape != PixelShape.LINE); Text("Tô kín hình") }
-                MirageButton("Đổ màu vùng kín", { viewModel.tool(PixelTool.FILL); panel = null }, secondary = true)
-                Text("Đối xứng nét vẽ")
-                MirrorMode.entries.forEach { m -> FilterChip(selected = state.mirror == m, onClick = { viewModel.mirror(m) }, label = { Text(mirrorLabel(m)) }) }
-                MirageButton("Văn bản", { viewModel.tool(PixelTool.TEXT); panel = "text" }, secondary = true)
-                MirageButton("Nhập ảnh", { panel = null; selectImage() }, secondary = true)
-                Row(verticalAlignment = Alignment.CenterVertically) { Switch(state.grid, { viewModel.grid() }); Text("Lưới pixel") }
-            }
-        }, confirmButton = { TextButton(onClick = { panel = null }) { Text("Xong") } })
+        "tools" -> StudioToolsSheet(state, viewModel, close = { panel = null },
+            openText = { viewModel.tool(PixelTool.TEXT); panel = "text" },
+            importImage = { panel = null; selectImage() })
         "text" -> PixelTextDialog(doc, state.color, viewModel) { panel = null }
         "import" -> image?.let { ImportImageDialog(it, doc, { viewModel.importPixels(it); panel = null }, { panel = null }, ::selectImage) }
     }

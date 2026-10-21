@@ -25,6 +25,7 @@ import com.carled.app.domain.model.ConnectionState
 import com.carled.app.domain.model.DeviceTelemetryStatus
 import com.carled.app.domain.model.TelemetryEvent
 import com.carled.app.domain.model.isLedAdvertisement
+import com.carled.app.domain.model.isValidDeviceName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -36,6 +37,11 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 
 @SuppressLint("MissingPermission")
@@ -262,6 +268,17 @@ class CarLedBleManager(private val context: Context) {
             }, 100)
         }
 
+        override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == Constants.BLE_CCCD_UUID) {
+                scope.launch {
+                    delay(150)
+                    if (bluetoothGatt === gatt && _connectionState.value is ConnectionState.Connected) {
+                        runCatching { sendJson(JSONObject().put("command", "get_device_info").toString()) }
+                    }
+                }
+            }
+        }
+
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 val service = gatt.getService(Constants.BLE_SERVICE_UUID)
@@ -280,7 +297,8 @@ class CarLedBleManager(private val context: Context) {
                         }
                     }
 
-                    val safeName = try { gatt.device.name } catch (e: SecurityException) { null }
+                    val safeName = _scannedDevices.value.firstOrNull { it.macAddress == gatt.device.address }?.name
+                        ?: try { gatt.device.name } catch (e: SecurityException) { null }
                     _connectionState.value = ConnectionState.Connected(
                         deviceName = if (!safeName.isNullOrBlank()) safeName else "CarLED-Ambient",
                         deviceAddress = gatt.device.address
@@ -316,6 +334,17 @@ class CarLedBleManager(private val context: Context) {
             if (obj.has("event")) {
                 // ── Event packet ──
                 val event = when (val eventName = obj.optString("event")) {
+                    "device_name" -> {
+                        val name = obj.optString("name")
+                        val connected = _connectionState.value as? ConnectionState.Connected
+                        if (name.isNotBlank() && connected != null) {
+                            _connectionState.value = connected.copy(deviceName = name)
+                            _scannedDevices.value = _scannedDevices.value.map {
+                                if (it.macAddress == connected.deviceAddress) it.copy(name = name) else it
+                            }
+                        }
+                        TelemetryEvent.DeviceName(obj.optString("request_id"), name, obj.optString("error"))
+                    }
                     "canvas_batch_applied" -> TelemetryEvent.CanvasBatchApplied(obj.optInt("sequence", -1))
                     "upload_started"     -> TelemetryEvent.UploadStarted(
                         expected = obj.optInt("expected", 0)
@@ -378,6 +407,25 @@ class CarLedBleManager(private val context: Context) {
         }
         lastSendTimestamp = now
         sendRawBytes(frame)
+    }
+
+    suspend fun renameDevice(name: String) = coroutineScope {
+        val proposed = name.trim()
+        require(isValidDeviceName(proposed)) {
+            "Tên phải có 1–29 byte UTF-8 và không có ký tự điều khiển"
+        }
+        val requestId = java.util.UUID.randomUUID().toString()
+        val reply = async(start = CoroutineStart.UNDISPATCHED) {
+            withTimeout(5000) {
+                _telemetryEvent.first { it is TelemetryEvent.DeviceName && it.requestId == requestId } as TelemetryEvent.DeviceName
+            }
+        }
+        try {
+            sendJson(JSONObject().put("command", "rename_device").put("name", proposed).put("request_id", requestId).toString())
+            val result = reply.await()
+            check(result.error.isBlank()) { result.error }
+            check(result.name == proposed) { "LED chưa xác nhận tên mới" }
+        } finally { reply.cancel() }
     }
 
     fun sendJson(json: String) {

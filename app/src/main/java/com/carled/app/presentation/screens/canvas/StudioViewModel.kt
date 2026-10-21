@@ -113,6 +113,10 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
     fun brush(value: Int) { _state.update { it.copy(brushSize = value.coerceIn(1, 4)) } }
     fun mirror(value: MirrorMode) { _state.update { it.copy(mirror = value) } }
     fun shape(value: PixelShape, filled: Boolean) { _state.update { it.copy(shape = value, filled = filled, tool = PixelTool.SHAPE) } }
+    fun applyTools(tool: PixelTool, shape: PixelShape, filled: Boolean, mirror: MirrorMode, grid: Boolean) {
+        if (_state.value.sending) return
+        _state.update { it.copy(tool = tool, shape = shape, filled = filled && shape != PixelShape.LINE, mirror = mirror, grid = grid) }
+    }
     fun grid() { _state.update { it.copy(grid = !it.grid) } }
     fun feedback(value: String?) { _state.update { it.copy(feedback = value) } }
     private fun history(document: PixelDocument) { undo.addLast(document); if (undo.size > 50) undo.removeFirst(); redo.clear() }

@@ -56,6 +56,8 @@ class ControlViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
             catch (e: Exception) { _uiState.update { it.copy(feedbackMessage = "Không gửi được lệnh: ${e.message}") } }
         }
     }
+    suspend fun renameDevice(name: String) { bleUseCases.renameDevice(name) }
+
     fun togglePower() {
         if (_uiState.value.connectionState !is ConnectionState.Connected) return
         val on = !_uiState.value.ledState.isPowerOn

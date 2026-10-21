@@ -8,6 +8,7 @@ package com.carled.app.domain.model
  *  - Nếu JSON KHÔNG có field "event" → đây là Status Telemetry định kỳ (cập nhật DeviceStatus)
  */
 sealed class TelemetryEvent {
+    data class DeviceName(val requestId: String, val name: String, val error: String) : TelemetryEvent()
     data class CanvasBatchApplied(val sequence: Int) : TelemetryEvent()
 
     /** ESP32 bắt đầu nhận gói ảnh/animation, expected = số bytes dự kiến */

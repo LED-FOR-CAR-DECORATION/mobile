@@ -148,7 +148,12 @@ class SendBatchDrawUseCase(private val repository: BleDeviceRepository) {
 
 // ──────── Aggregate ────────
 
+class RenameDeviceUseCase(private val repository: BleDeviceRepository) {
+    suspend operator fun invoke(name: String) = repository.renameDevice(name)
+}
+
 data class BleUseCases(
+    val renameDevice: RenameDeviceUseCase,
     // Scan / Connect
     val scanDevices: ScanDevicesUseCase,
     val stopScan: StopScanUseCase,

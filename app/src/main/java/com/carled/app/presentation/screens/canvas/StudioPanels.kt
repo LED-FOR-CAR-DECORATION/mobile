@@ -118,39 +118,6 @@ fun ColorEditor(value: Int, onChange: (Int) -> Unit, tab: Int = 0) {
 }
 
 @Composable
-fun PixelTextDialog(doc: PixelDocument, color: Int, vm: StudioViewModel, close: () -> Unit) {
-    var selected by remember { mutableStateOf<String?>(null) }
-    var text by remember { mutableStateOf("") }
-    var font by remember { mutableStateOf(3 to 5) }
-    var x by remember { mutableStateOf("0") }; var y by remember { mutableStateOf("0") }
-    var textColor by remember { mutableIntStateOf(color) }
-    val block = PixelText(selected ?: "new", text, x.toIntOrNull() ?: -1, y.toIntOrNull() ?: -1, font.first, font.second, textColor)
-    val valid = PixelFont.fits(block, doc.width, doc.height)
-    val preview = doc.copy(texts = doc.texts.filterNot { it.id == selected } + if (valid) listOf(block) else emptyList())
-    AlertDialog(onDismissRequest = close, title = { Text("Văn bản pixel") }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()).imePadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PixelPreview(preview, Modifier.fillMaxWidth().aspectRatio(doc.width.toFloat() / doc.height))
-            Row(Modifier.horizontalScroll(rememberScrollState())) {
-                TextButton(onClick = { selected = null; text = ""; x = "0"; y = "0" }) { Text("+ Khối mới") }
-                doc.texts.forEach { b -> FilterChip(selected = selected == b.id, onClick = { selected = b.id; text = b.text; x = b.x.toString(); y = b.y.toString(); font = b.glyphWidth to b.glyphHeight; textColor = b.color }, label = { Text(b.text) }) }
-            }
-            OutlinedTextField(text, { text = it.take(64) }, label = { Text("Nội dung tiếng Anh") }, singleLine = true, isError = text.isNotEmpty() && !PixelFont.supports(text))
-            Text("Chỉ ký tự tiếng Anh, số và dấu ASCII. Font nhỏ hiển thị chữ hoa; 3×5, các cỡ lớn phóng từ bitmap.", style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { listOf(3 to 5, 5 to 7, 7 to 9).forEach { f -> FilterChip(selected = font == f, onClick = { font = f }, label = { Text("${f.first}×${f.second}") }) } }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(x, { x = it.filter(Char::isDigit).take(2) }, label = { Text("Vị trí X") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                OutlinedTextField(y, { y = it.filter(Char::isDigit).take(2) }, label = { Text("Vị trí Y") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-            }
-            Row(Modifier.horizontalScroll(rememberScrollState())) { listOf(color, 0xffffffff.toInt(), 0xff111111.toInt(), 0xffffd966.toInt()).distinct().forEach { c -> ColorSwatch(c, c == textColor) { textColor = c } } }
-            if (!valid && text.isNotEmpty()) Text("Ký tự chưa hỗ trợ hoặc chữ nằm ngoài canvas.", color = MaterialTheme.colorScheme.error)
-            Text("Bút và tẩy không sửa lớp chữ. Mở lại công cụ Văn bản để chỉnh sửa.")
-            if (selected != null) TextButton(onClick = { vm.deleteText(selected!!); close() }) { Text("Xóa khối chữ") }
-        }
-    }, confirmButton = { TextButton(enabled = valid, onClick = { if (vm.text(block.copy(id = selected ?: UUID.randomUUID().toString()))) close() }) { Text("Áp dụng") } },
-        dismissButton = { TextButton(onClick = close) { Text("Hủy") } })
-}
-
-@Composable
 fun ImportImageDialog(image: Bitmap, doc: PixelDocument, apply: (List<Int>) -> Unit, close: () -> Unit, choose: () -> Unit) {
     var crop by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }

@@ -1,6 +1,8 @@
 package com.carled.app.presentation.screens.main
 
 import androidx.compose.foundation.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,10 +34,12 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
     var rename by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("mirage_devices", 0) }
+    val renameScope = rememberCoroutineScope()
+    var renaming by remember { mutableStateOf(false) }
+    var renameError by remember { mutableStateOf<String?>(null) }
     val state by control.uiState.collectAsState()
     val device = state.connectionState as? ConnectionState.Connected
-    var alias by remember(device?.deviceAddress) { mutableStateOf(prefs.getString(device?.deviceAddress ?: "", null) ?: device?.deviceName ?: "CarLED-Ambient") }
+    val alias = device?.deviceName ?: "CarLED-Ambient"
     var draftName by remember { mutableStateOf(alias) }
     val titles = listOf("Thiết bị của tôi", "Nội dung LED", "Tài khoản")
     val icons = listOf(Icons.Default.Devices, Icons.Default.GridView, Icons.Default.PersonOutline)
@@ -92,7 +96,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                         Text("Thiết bị đã kết nối", style = MaterialTheme.typography.titleMedium)
                         Text(if (device == null) "Chưa kết nối thiết bị" else alias)
                         if (device != null) {
-                            TextButton(onClick = { draftName = alias; rename = true }) { Text("Đổi tên hiển thị") }
+                            TextButton(onClick = { draftName = alias; renameError = null; rename = true }) { Text("Đổi tên Bluetooth") }
                             TextButton(onClick = { confirmDisconnect = true }) { Text("Ngắt kết nối") }
                         } else MirageButton("Kết nối thiết bị", openScan, Modifier.fillMaxWidth())
                     }
@@ -106,8 +110,21 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
         confirmButton = { TextButton(onClick = { scanner.disconnectDevice(); logout() }) { Text("Đăng xuất") } }, dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("Hủy") } })
     if (confirmDisconnect) AlertDialog(onDismissRequest = { confirmDisconnect = false }, title = { Text("Ngắt kết nối LED?") },
         confirmButton = { TextButton(onClick = { scanner.disconnectDevice(); confirmDisconnect = false }) { Text("Ngắt kết nối") } }, dismissButton = { TextButton(onClick = { confirmDisconnect = false }) { Text("Hủy") } })
-    if (rename) AlertDialog(onDismissRequest = { rename = false }, title = { Text("Tên hiển thị") }, text = { OutlinedTextField(draftName, { draftName = it.take(40) }, label = { Text("Tên trên điện thoại này") }) },
-        confirmButton = { TextButton(enabled = draftName.isNotBlank(), onClick = { prefs.edit().putString(device?.deviceAddress ?: "", draftName.trim()).apply(); alias = draftName.trim(); rename = false }) { Text("Lưu") } }, dismissButton = { TextButton(onClick = { rename = false }) { Text("Hủy") } })
+    if (rename) AlertDialog(onDismissRequest = { if (!renaming) rename = false }, title = { Text("Tên Bluetooth của LED") }, text = {
+        Column {
+            OutlinedTextField(draftName, { draftName = it; renameError = null }, enabled = !renaming, singleLine = true,
+                label = { Text("Tên thiết bị") }, supportingText = { Text("Tối đa 29 byte UTF-8 · Lưu trực tiếp trên LED") })
+            renameError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        }
+    }, confirmButton = { TextButton(enabled = !renaming && device != null && isValidDeviceName(draftName), onClick = {
+        renaming = true
+        renameScope.launch {
+            try { control.renameDevice(draftName); rename = false }
+            catch (e: CancellationException) { if (e is kotlinx.coroutines.TimeoutCancellationException) renameError = "LED chưa xác nhận. Kiểm tra kết nối và cập nhật firmware LED." else throw e }
+            catch (e: Exception) { renameError = if (e is kotlinx.coroutines.TimeoutCancellationException) "LED chưa xác nhận. Kiểm tra kết nối và cập nhật firmware LED." else e.message ?: "Không đổi được tên" }
+            finally { renaming = false }
+        }
+    }) { Text(if (renaming) "Đang lưu…" else "Lưu trên LED") } }, dismissButton = { TextButton(enabled = !renaming, onClick = { rename = false }) { Text("Hủy") } })
     if (help) AlertDialog(onDismissRequest = { help = false }, title = { Text("Kết nối Bluetooth") }, text = { Text("Bật nguồn LED và Bluetooth trên điện thoại. Android 12 trở lên cần quyền Thiết bị ở gần; Android cũ hơn cần quyền Vị trí để quét BLE. Đặt điện thoại gần LED rồi chọn Thêm thiết bị. Điều khiển BLE không cần Internet.") }, confirmButton = { TextButton(onClick = { help = false }) { Text("Đã hiểu") } })
 }
 

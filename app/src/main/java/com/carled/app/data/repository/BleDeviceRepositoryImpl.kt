@@ -30,6 +30,8 @@ class BleDeviceRepositoryImpl(
     private val _ledState = MutableStateFlow(LedControlState())
     override val ledState: StateFlow<LedControlState> = _ledState.asStateFlow()
 
+    override suspend fun renameDevice(name: String) = bleManager.renameDevice(name)
+
     override fun startScan() {
         bleManager.startScan()
     }

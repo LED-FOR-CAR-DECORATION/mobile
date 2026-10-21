@@ -22,6 +22,8 @@ interface BleDeviceRepository {
     /** Event một lần từ ESP32 (upload, marquee, wifi, canvas events) */
     val telemetryEvent: SharedFlow<TelemetryEvent>
 
+    suspend fun renameDevice(name: String)
+
     fun startScan()
     fun stopScan()
     fun connect(macAddress: String)

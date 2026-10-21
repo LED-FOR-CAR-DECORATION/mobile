@@ -57,6 +57,7 @@ object ServiceLocator {
 
     val bleUseCases: BleUseCases by lazy {
         BleUseCases(
+            renameDevice = RenameDeviceUseCase(bleDeviceRepository),
             // Scan / Connect
             scanDevices          = ScanDevicesUseCase(bleDeviceRepository),
             stopScan             = StopScanUseCase(bleDeviceRepository),
