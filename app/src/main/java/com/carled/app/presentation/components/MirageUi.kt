@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.carled.app.domain.model.PixelDocument
+import androidx.compose.ui.platform.LocalContext
+import com.carled.app.R
 
 val MirageSage = Color(0xff89c89b)
 val MirageInk = Color(0xff111111)
@@ -51,21 +53,25 @@ fun MirageBar(title: String, back: (() -> Unit)? = null, actions: @Composable Ro
 
 @Composable
 fun PixelPreview(document: PixelDocument? = null, modifier: Modifier = Modifier, grid: Boolean = false) {
-    val pixels = remember(document) { document?.composite() }
+    val context = LocalContext.current
+    val shown = document ?: remember(context) {
+        // Exact first frame of IoT-Device/src/storage/DefaultCarPattern.h (little-endian RGB565).
+        val data = context.resources.openRawResource(R.raw.default_led_car).use { it.readBytes() }
+        require(data.size == 64 * 32 * 2 * 2)
+        PixelDocument(64, 32, List(64 * 32) { index ->
+            val color = (data[index * 2].toInt() and 255) or ((data[index * 2 + 1].toInt() and 255) shl 8)
+            val r = (color ushr 11) and 31; val g = (color ushr 5) and 63; val b = color and 31
+            (0xff shl 24) or (((r shl 3) or (r ushr 2)) shl 16) or (((g shl 2) or (g ushr 4)) shl 8) or ((b shl 3) or (b ushr 2))
+        })
+    }
+    val pixels = remember(shown) { shown.composite() }
     Canvas(modifier.background(Color(0xff101913), RoundedCornerShape(8.dp)).padding(12.dp)) {
-        if (document != null && pixels != null) {
-            val cell = minOf(size.width / document.width, size.height / document.height)
-            val ox = (size.width - document.width * cell) / 2; val oy = (size.height - document.height * cell) / 2
-            for (y in 0 until document.height) for (x in 0 until document.width) {
-                val p = pixels[y * document.width + x]
-                drawRect(if (p == 0) Color(0xff1a2920) else Color(p), Offset(ox + x * cell, oy + y * cell), Size(cell, cell))
-                if (grid) drawRect(Color(0xff39463c), Offset(ox + x * cell, oy + y * cell), Size(cell, cell), style = Stroke(.5f))
-            }
-        } else {
-            val pattern = listOf("11000000011", "11100000111", "11111111111", "11011111011", "11111111111", "01101110110", "00111111100", "00011111000")
-            val unit = minOf(size.width / 15, size.height / 12)
-            pattern.forEachIndexed { y, row -> row.forEachIndexed { x, c -> if (c == '1')
-                drawRect(MirageSage, Offset((size.width - 11 * unit) / 2 + x * unit, (size.height - 8 * unit) / 2 + y * unit), Size(unit - 1, unit - 1)) } }
+        val cell = minOf(size.width / shown.width, size.height / shown.height)
+        val ox = (size.width - shown.width * cell) / 2; val oy = (size.height - shown.height * cell) / 2
+        for (y in 0 until shown.height) for (x in 0 until shown.width) {
+            val p = pixels[y * shown.width + x]
+            drawRect(if (p == 0) Color(0xff1a2920) else Color(p), Offset(ox + x * cell, oy + y * cell), Size(cell, cell))
+            if (grid) drawRect(Color(0xff39463c), Offset(ox + x * cell, oy + y * cell), Size(cell, cell), style = Stroke(.5f))
         }
     }
 }

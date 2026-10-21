@@ -24,6 +24,8 @@ object BleProtocolHelper {
 
     // Canvas Drawing
     const val CMD_DRAW_PIXEL: Byte = 0x13
+    const val MAX_DRAW_POINTS = 12
+    const val CMD_DRAW_CONFIRMED: Byte = 0x1A
     const val CMD_DRAW_BATCH: Byte = 0x14
     const val CMD_CANVAS_CLEAR: Byte = 0x15
 
@@ -69,7 +71,8 @@ object BleProtocolHelper {
      * [0xAA, 0x14, count, x0,y0,r0,g0,b0, ..., xN,yN,rN,gN,bN, checksum, 0x55]
      */
     fun buildBatchDrawFrame(points: List<TouchPoint>): ByteArray {
-        val count = points.size.coerceAtMost(12)
+        require(points.size in 1..MAX_DRAW_POINTS) { "Batch must contain1..12 pixels; never truncate a stroke" }
+        val count = points.size
         val payload = ByteArray(3 + count * 5 + 2)
         payload[0] = HEADER
         payload[1] = CMD_DRAW_BATCH
@@ -91,6 +94,20 @@ object BleProtocolHelper {
         payload[3 + count * 5]     = (csum and 0xFF).toByte()
         payload[3 + count * 5 + 1] = TAIL
         return payload
+    }
+
+    fun buildConfirmedBatchFrame(points: List<TouchPoint>, sequence: Int): ByteArray {
+        require(sequence in 0..65535)
+        require(points.all { it.x in 0..63 && it.y in 0..31 && listOf(it.r,it.g,it.b).all { c -> c in 0..255 } })
+        val legacy = buildBatchDrawFrame(points)
+        val frame = ByteArray(legacy.size + 2)
+        frame[0] = HEADER; frame[1] = CMD_DRAW_CONFIRMED
+        frame[2] = (sequence ushr 8).toByte(); frame[3] = sequence.toByte()
+        legacy.copyInto(frame,4,2,legacy.size-2)
+        var checksum = 0
+        for (i in 1 until frame.size-2) checksum = checksum xor (frame[i].toInt() and 255)
+        frame[frame.size-2] = checksum.toByte(); frame[frame.size-1] = TAIL
+        return frame
     }
 
     /**

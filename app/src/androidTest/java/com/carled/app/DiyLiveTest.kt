@@ -29,7 +29,7 @@ class DiyLiveTest {
   var clears=0;var batches=0;var uploads=0;var bytes:ByteArray?=null;var fail=false;var imageMode=false
   override suspend fun clearCanvas() { clears++;board.fill(0);imageMode=false }
   override suspend fun sendBatchDraw(points:List<TouchPoint>) {
-   check(!fail) { "write rejected" };if(imageMode) { board.fill(0);imageMode=false };assertTrue(points.size<=15);batches++
+   check(!fail) { "write rejected" };if(imageMode) { board.fill(0);imageMode=false };assertTrue(points.size<=com.carled.app.data.ble.BleProtocolHelper.MAX_DRAW_POINTS);batches++
    points.forEach { board[it.y*64+it.x]=(it.r shl 16) or (it.g shl 8) or it.b }
   }
   override suspend fun uploadProjection(rgb565Data:ByteArray) { uploads++;bytes=rgb565Data;imageMode=true }

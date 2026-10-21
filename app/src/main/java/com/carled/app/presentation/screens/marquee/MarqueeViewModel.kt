@@ -4,6 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.carled.app.domain.model.TelemetryEvent
 import com.carled.app.domain.model.MarqueeLayout
+import com.carled.app.domain.model.TextProfile
+import com.carled.app.domain.model.TextProfilePlan
+import com.carled.app.domain.model.TextProfileRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.util.UUID
 import com.carled.app.domain.usecase.ble.BleUseCases
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,11 +24,73 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
 
-class MarqueeViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
+data class TextProfilesState(val entries: List<TextProfile> = emptyList(), val plan: TextProfilePlan = TextProfilePlan.BASIC,
+    val selectedId: String? = null, val busy: Boolean = false, val loaded: Boolean = false, val error: String? = null)
+
+class MarqueeViewModel(private val bleUseCases: BleUseCases, private val profileStore: TextProfileRepository? = null) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MarqueeUiState())
     val uiState: StateFlow<MarqueeUiState> = _uiState.asStateFlow()
     val connection = bleUseCases.getConnectionState()
+
+    val hasProfiles = profileStore != null
+    private val _profiles = MutableStateFlow(TextProfilesState())
+    val profiles = _profiles.asStateFlow()
+    init { reloadProfiles() }
+    fun clearProfileError() { _profiles.update { it.copy(error = null) } }
+    fun reloadProfiles() {
+        val store=profileStore ?: return
+        if (_profiles.value.busy) return
+        _profiles.update { it.copy(busy=true,error=null) }
+        viewModelScope.launch {
+            try {
+                val (entries,plan)=withContext(Dispatchers.IO) { store.list() to store.plan() }
+                _profiles.update { it.copy(entries=entries,plan=plan,loaded=true,error=null) }
+            } catch(e: CancellationException) { throw e }
+            catch(e:Exception) { _profiles.update { it.copy(error="Không đọc được profile đã lưu. Hãy thử lại.",loaded=false) } }
+            finally { _profiles.update { it.copy(busy=false) } }
+        }
+    }
+    fun selectProfile(id:String) {
+        if (_uiState.value.isSending || _profiles.value.busy) return
+        val p=_profiles.value.entries.firstOrNull { it.id==id } ?: return
+        _uiState.update { it.copy(text=p.text,size=p.size,speed=p.speed,scrollMode=p.mode,r=p.r,g=p.g,b=p.b,rainbow=p.rainbow,feedbackMessage="Đã nạp profile ${p.name}. Chọn Hiển thị trên LED để phát.") }
+        _profiles.update { it.copy(selectedId=id,error=null) }
+    }
+    fun saveProfile(name:String, update:Boolean, onSaved:()->Unit = {}) {
+        val store=profileStore ?: return
+        val ps=_profiles.value
+        if (ps.busy || !ps.loaded || _uiState.value.isSending) return
+        val id=if(update) ps.selectedId ?: return else UUID.randomUUID().toString()
+        val s=_uiState.value
+        val p=TextProfile(id,name.trim(),MarqueeLayout.clean(s.text),s.size,s.speed,s.scrollMode,s.r,s.g,s.b,s.rainbow)
+        try { p.validate() } catch(e:Exception) { _profiles.update { it.copy(error=e.message) };return }
+        _profiles.update { it.copy(busy=true,error=null) }
+        viewModelScope.launch {
+            try {
+                val (entries,plan)=withContext(Dispatchers.IO) { store.save(p);store.list() to store.plan() }
+                _profiles.update { it.copy(entries=entries,plan=plan,selectedId=id) }
+                _uiState.update { it.copy(feedbackMessage="Đã lưu profile ${p.name} trên điện thoại.") }
+                onSaved()
+            } catch(e:CancellationException) { throw e }
+            catch(e:Exception) { _profiles.update { it.copy(error=e.message ?: "Không lưu được profile.") } }
+            finally { _profiles.update { it.copy(busy=false) } }
+        }
+    }
+    fun deleteProfile(id:String,onDeleted:()->Unit = {}) {
+        val store=profileStore ?: return
+        if (_profiles.value.busy || !_profiles.value.loaded || _uiState.value.isSending) return
+        _profiles.update { it.copy(busy=true,error=null) }
+        viewModelScope.launch {
+            try {
+                val entries=withContext(Dispatchers.IO) { store.delete(id);store.list() }
+                _profiles.update { it.copy(entries=entries,selectedId=it.selectedId.takeUnless { value -> value==id }) }
+                onDeleted()
+            } catch(e:CancellationException) { throw e }
+            catch(e:Exception) { _profiles.update { it.copy(error=e.message ?: "Không xóa được profile.") } }
+            finally { _profiles.update { it.copy(busy=false) } }
+        }
+    }
 
     fun updateText(text: String) {
         _uiState.update { it.copy(text = text) }
@@ -80,14 +148,15 @@ class MarqueeViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
         }
         val cleanText = MarqueeLayout.clean(state.text)
         val layout = MarqueeLayout.fit(cleanText, state.size)
-        if (state.scrollMode == "static" && !layout.fits) {
+        if (state.scrollMode != "scroll_left" && !layout.fits) {
             _uiState.update { it.copy(feedbackMessage = "Chữ vượt khung 64×32 ở cỡ 5×7. Rút ngắn còn tối đa 40 ký tự hoặc chọn Cuộn trái.") }; return
         }
         _uiState.update { it.copy(isSending = true, feedbackMessage = null) }
         viewModelScope.launch {
             try {
             coroutineScope {
-            val static = state.scrollMode == "static"
+            val static = state.scrollMode != "scroll_left"
+            val blink = state.scrollMode == "blink"
             val ack = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(if (static) 30000L else 10000L) {
                 bleUseCases.getTelemetryEvent().first {
                     if (static) it is TelemetryEvent.UploadComplete || it is TelemetryEvent.UploadError
@@ -96,7 +165,8 @@ class MarqueeViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
             } }
             if (static) {
                 val color = (0xff shl 24) or (state.r shl 16) or (state.g shl 8) or state.b
-                bleUseCases.uploadProjection(layout.render(color).rgb565())
+                if (blink) bleUseCases.uploadProjection(layout.projection(true, color), frameCount = 2, frameDelayMs = MarqueeLayout.BLINK_FRAME_DELAY_MS)
+                else bleUseCases.uploadProjection(layout.projection(false, color))
             } else bleUseCases.sendMarquee(
                 text       = cleanText,
                 r          = state.r,
@@ -109,7 +179,7 @@ class MarqueeViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
             )
             val event = ack.await()
             if (event is TelemetryEvent.UploadError) error("LED báo lỗi: ${event.error}")
-            _uiState.update { it.copy(lastEventText = cleanText, feedbackMessage = if (static) "LED đã xác nhận chữ tĩnh · ${layout.glyphLabel} · ${layout.lines.size} dòng." else "Thiết bị đã xác nhận hiển thị chữ.") }
+            _uiState.update { it.copy(lastEventText = cleanText, feedbackMessage = if (static) "LED đã xác nhận ${if (blink) "chữ nhấp nháy" else "chữ tĩnh"} · ${layout.glyphLabel} · ${layout.lines.size} dòng." else "Thiết bị đã xác nhận hiển thị chữ.") }
             }
             } catch (e: TimeoutCancellationException) {
                 _uiState.update { it.copy(feedbackMessage = "Chưa nhận xác nhận từ LED. Kiểm tra kết nối.") }

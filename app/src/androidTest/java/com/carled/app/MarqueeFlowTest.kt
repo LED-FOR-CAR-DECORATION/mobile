@@ -26,9 +26,11 @@ class MarqueeFlowTest {
  private class Device : BleDeviceRepository by ServiceLocator.bleDeviceRepository {
   override val connectionState=MutableStateFlow<ConnectionState>(ConnectionState.Connected("Test LED","test"))
   override val telemetryEvent=MutableSharedFlow<TelemetryEvent>(extraBufferCapacity=8)
+  var frames=1;var interval=200
   var bytes:ByteArray?=null
   var command:Pair<String,Int>?=null
   override suspend fun uploadProjection(rgb565Data:ByteArray) { bytes=rgb565Data }
+  override suspend fun uploadAnimation(rgb565Data:ByteArray,frameCount:Int,frameDelayMs:Int) { bytes=rgb565Data;frames=frameCount;interval=frameDelayMs }
   override suspend fun sendMarquee(text:String,r:Int,g:Int,b:Int,speed:Int,size:Int,rainbow:Boolean,scrollMode:String) { command=text to size }
  }
  private fun model(device:Device)=MarqueeViewModel(ServiceLocator.bleUseCases.copy(
@@ -71,6 +73,37 @@ class MarqueeFlowTest {
  @Test fun staticUploadErrorIsNotReportedAsSuccess() {
   val device=Device();val vm=model(device)
   compose.runOnIdle { vm.updateText("LED");vm.updateScrollMode("static");vm.sendMarquee() }
+  compose.waitUntil(5000) { device.bytes!=null }
+  compose.runOnIdle { device.telemetryEvent.tryEmit(TelemetryEvent.UploadError("flash_write_fail")) }
+  compose.waitUntil(5000) { !vm.uiState.value.isSending }
+  compose.runOnIdle { assertTrue(vm.uiState.value.feedbackMessage!!.contains("flash_write_fail"));assertNull(vm.uiState.value.lastEventText) }
+ }
+
+ @Test fun blinkUsesSameFittedStaticFrameAndBlackFrameThenWaitsForAck() {
+  val device=Device();val vm=model(device)
+  compose.runOnIdle { vm.updateText("XIN NHUONG DUONG - CAM ON!");vm.updateSize(2);vm.updateScrollMode("blink") }
+  compose.setContent { CarLedTheme { MirageMarqueeScreen(vm,{}) } }
+  compose.onNodeWithText("Tự vừa màn hình · 5×7 · 3 dòng · căn giữa · Nhấp nháy").assertExists()
+  compose.onNodeWithText("Cỡ chữ ưu tiên").assertExists()
+  compose.onNodeWithText("Tốc độ · 60").assertDoesNotExist()
+  compose.onNodeWithText("Hiển thị trên LED").performScrollTo().performClick()
+  compose.waitUntil(5000) { device.bytes!=null }
+  compose.runOnIdle {
+   val expected=MarqueeLayout.fit(vm.uiState.value.text,2).render(0xffffd700.toInt()).rgb565()
+   assertEquals(8192,device.bytes!!.size);assertEquals(2,device.frames);assertEquals(400,device.interval)
+   assertArrayEquals(expected,device.bytes!!.copyOfRange(0,4096))
+   assertTrue(device.bytes!!.copyOfRange(4096,8192).all { it==0.toByte() })
+   assertNull(device.command);assertTrue(vm.uiState.value.isSending)
+   device.telemetryEvent.tryEmit(TelemetryEvent.MarqueeActive(vm.uiState.value.text))
+  }
+  compose.waitForIdle();compose.runOnIdle { assertTrue(vm.uiState.value.isSending);device.telemetryEvent.tryEmit(TelemetryEvent.UploadComplete("ok",6)) }
+  compose.waitUntil(5000) { !vm.uiState.value.isSending }
+  compose.runOnIdle { assertTrue(vm.uiState.value.feedbackMessage!!.contains("chữ nhấp nháy")) }
+ }
+ @Test fun blinkRejectsOverflowAndHandlesDeviceUploadError() {
+  val device=Device();val vm=model(device)
+  compose.runOnIdle { vm.updateScrollMode("blink");vm.updateText("W".repeat(41));vm.sendMarquee() }
+  compose.runOnIdle { assertNull(device.bytes);assertFalse(vm.uiState.value.isSending);vm.updateText("LED");vm.sendMarquee() }
   compose.waitUntil(5000) { device.bytes!=null }
   compose.runOnIdle { device.telemetryEvent.tryEmit(TelemetryEvent.UploadError("flash_write_fail")) }
   compose.waitUntil(5000) { !vm.uiState.value.isSending }

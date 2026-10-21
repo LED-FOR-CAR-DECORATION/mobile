@@ -36,6 +36,19 @@ class MirageNavigationTest {
         compose.onNodeWithText("Chạy chữ").assertIsDisplayed()
         compose.onNodeWithText("Nhập ảnh").assertIsDisplayed()
         screenshot(context, "creation-launcher")
+        compose.onNodeWithText("Effect").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Màu đơn sắc & hiệu ứng").assertIsDisplayed()
+        compose.onNodeWithText("Màu đơn sắc").assertExists()
+        compose.onNodeWithText("Nhịp thở").assertExists()
+        compose.onNodeWithText("Cầu vồng").assertExists()
+        compose.onNodeWithText("Đuổi màu").assertExists()
+        compose.onNodeWithText("Theo nhạc").assertExists()
+        compose.onNodeWithTag("ledPower").assertDoesNotExist()
+        compose.onNodeWithTag("ledBrightness").assertDoesNotExist()
+        compose.onNodeWithTag("ledColorWheel").performScrollTo().assertIsDisplayed()
+        screenshot(context, "effect")
+        androidx.test.espresso.Espresso.pressBack()
+        compose.onNodeWithTag("creationLauncher").performScrollTo()
         compose.onNodeWithText("Nhập ảnh").performClick()
         compose.onNodeWithText("Chọn ảnh từ điện thoại").assertIsDisplayed()
         compose.onNodeWithText("Chiếu lên LED").performScrollTo().assertIsNotEnabled()
@@ -59,6 +72,21 @@ class MirageNavigationTest {
         compose.onNodeWithText("Tạo canvas").performScrollTo().performClick()
         compose.onNodeWithText("Trình vẽ pixel").assertIsDisplayed()
         compose.onNodeWithTag("importFromGallery").performScrollTo().assertIsDisplayed().assertIsEnabled()
+    }
+    @Test fun ledControlOnlyContainsPowerAndBrightness() {
+        val vm = com.carled.app.presentation.screens.control.ControlViewModel(ServiceLocator.bleUseCases)
+        compose.setContent { CarLedTheme { com.carled.app.presentation.screens.control.MirageControlScreen(vm, {}, {}) } }
+        compose.onNodeWithTag("ledPower").assertIsDisplayed()
+        compose.onNodeWithTag("ledBrightness").assertIsDisplayed()
+        compose.onNodeWithText("Chế độ hiển thị").assertDoesNotExist()
+        compose.onNodeWithTag("ledColorWheel").assertDoesNotExist()
+        compose.onNodeWithText("Nhập RGB / HSV").assertDoesNotExist()
+        compose.onNodeWithText("Màu đơn sắc").assertDoesNotExist()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val directory = File(context.getExternalFilesDir(null), "qa").apply { mkdirs() }
+        File(directory, "led-control-simple.png").outputStream().use {
+            compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
     }
     private fun screenshot(context: Context, name: String) {
         compose.waitForIdle()

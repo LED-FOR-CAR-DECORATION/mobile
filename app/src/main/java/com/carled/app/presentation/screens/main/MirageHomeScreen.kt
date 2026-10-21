@@ -25,7 +25,7 @@ import com.carled.app.presentation.screens.scan.ScanViewModel
 @Composable
 fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: User?,
     openScan: () -> Unit, openControl: () -> Unit, openCanvas: (String?) -> Unit,
-    openMarquee: () -> Unit, openUpload: () -> Unit, logout: () -> Unit, openCharacter: (String) -> Unit = {}, initialTab: Int = 0) {
+    openMarquee: () -> Unit, openUpload: () -> Unit, logout: () -> Unit, openEffect: () -> Unit = {}, openCharacter: (String) -> Unit = {}, initialTab: Int = 0) {
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
     var confirmLogout by remember { mutableStateOf(false) }
     var confirmDisconnect by remember { mutableStateOf(false) }
@@ -69,10 +69,15 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                         MirageButton("Thêm thiết bị", openScan, Modifier.fillMaxWidth())
                     }
                     Text("Tạo theo cách của bạn", style = MaterialTheme.typography.titleLarge)
-                    Row(Modifier.fillMaxWidth().testTag("creationLauncher"), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        CreationFunction("DIY pixel", Icons.Default.Edit, MirageSage.copy(alpha = .3f), { openCanvas(null) }, Modifier.weight(1f))
-                        CreationFunction("Chạy chữ", Icons.Default.TextFields, Color(0xffffedb4), openMarquee, Modifier.weight(1f))
-                        CreationFunction("Nhập ảnh", Icons.Default.PhotoLibrary, Color(0xffdceefe), openUpload, Modifier.weight(1f))
+                    Column(Modifier.fillMaxWidth().testTag("creationLauncher"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            CreationFunction("DIY pixel", Icons.Default.Edit, MirageSage.copy(alpha = .3f), { openCanvas(null) }, Modifier.weight(1f))
+                            CreationFunction("Chạy chữ", Icons.Default.TextFields, Color(0xffffedb4), openMarquee, Modifier.weight(1f))
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            CreationFunction("Nhập ảnh", Icons.Default.PhotoLibrary, Color(0xffdceefe), openUpload, Modifier.weight(1f))
+                            CreationFunction("Effect", Icons.Default.AutoAwesome, Color(0xffe9ddfa), openEffect, Modifier.weight(1f))
+                        }
                     }
                     state.feedbackMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 }

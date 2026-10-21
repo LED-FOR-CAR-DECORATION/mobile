@@ -23,7 +23,14 @@ data class MarqueeLayout(val lines: List<String>, val scale: Int, val fits: Bool
         }
         return PixelDocument(64, 32, pixels)
     }
+    /** Same fitted lit frame for static and blink; RGB565 zero is an all-black off frame. */
+    fun projection(blink: Boolean, color: Int): ByteArray {
+        require(fits) { "Text does not fit the LED canvas" }
+        val lit = render(color).rgb565()
+        return if (blink) lit + ByteArray(lit.size) else lit
+    }
     companion object {
+        const val BLINK_FRAME_DELAY_MS = 400
         fun clean(text: String): String = text.trim().replace(Regex("\\s+"), " ")
         fun fit(text: String, preferredSize: Int): MarqueeLayout {
             val clean = clean(text)

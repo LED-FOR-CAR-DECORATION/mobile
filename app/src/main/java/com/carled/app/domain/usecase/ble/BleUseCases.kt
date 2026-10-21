@@ -116,8 +116,11 @@ class ReloadProjectionUseCase(private val repository: BleDeviceRepository) {
 }
 
 class UploadProjectionUseCase(private val repository: BleDeviceRepository) {
-    suspend operator fun invoke(rgb565Data: ByteArray) {
-        repository.uploadProjection(rgb565Data)
+    suspend operator fun invoke(rgb565Data: ByteArray, frameCount: Int = 1, frameDelayMs: Int = 200) {
+        require(frameCount in 1..255 && frameDelayMs in 1..65535)
+        require(rgb565Data.size == 64 * 32 * 2 * frameCount)
+        if (frameCount == 1 && frameDelayMs == 200) repository.uploadProjection(rgb565Data)
+        else repository.uploadAnimation(rgb565Data, frameCount, frameDelayMs)
     }
 }
 

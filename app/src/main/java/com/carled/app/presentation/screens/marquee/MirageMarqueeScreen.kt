@@ -15,7 +15,7 @@ fun MirageMarqueeScreen(vm: MarqueeViewModel, back: () -> Unit) {
     val state by vm.uiState.collectAsState()
     val connection by vm.connection.collectAsState()
     val layout = remember(state.text, state.size) { MarqueeLayout.fit(state.text, state.size) }
-    val static = state.scrollMode == "static"
+    val static = state.scrollMode != "scroll_left"
     val valid = state.text.isNotBlank() && state.text.all { it.code in 32..126 }
     val preview = remember(state.text, state.size, state.scrollMode, state.r, state.g, state.b) {
         val color = android.graphics.Color.rgb(state.r, state.g, state.b)
@@ -28,8 +28,9 @@ fun MirageMarqueeScreen(vm: MarqueeViewModel, back: () -> Unit) {
             PixelPreview(preview, Modifier.fillMaxWidth().aspectRatio(2f))
             Text(if (static) {
                 if (!layout.fits) "Không đủ chỗ ở cỡ 5×7. Rút ngắn còn tối đa 40 ký tự hoặc chọn Cuộn trái."
-                else "Tự vừa màn hình · ${layout.glyphLabel} · ${layout.lines.size} dòng · căn giữa"
-            } else "Xem trước phần đầu · ${if (state.size == 2) "10×14" else "5×7"} · ${if (state.scrollMode == "blink") "Chữ dài có thể bị cắt khi nhấp nháy." else "Chữ dài sẽ cuộn trên LED."}", color = if (static && !layout.fits) MaterialTheme.colorScheme.error else MirageMuted)
+                else "Tự vừa màn hình · ${layout.glyphLabel} · ${layout.lines.size} dòng · căn giữa${if (state.scrollMode == "blink") " · Nhấp nháy" else ""}"
+            } else "Xem trước phần đầu · ${if (state.size == 2) "10×14" else "5×7"} · Chữ dài sẽ cuộn trên LED.", color = if (static && !layout.fits) MaterialTheme.colorScheme.error else MirageMuted)
+            if (vm.hasProfiles) TextProfilesPanel(vm, valid && (!static || layout.fits))
             OutlinedTextField(state.text, vm::updateText, modifier = Modifier.fillMaxWidth(), enabled = !state.isSending, singleLine = true, label = { Text("Nội dung") }, supportingText = { Text("Dùng ký tự tiếng Anh không dấu.") })
             Text(if (static) "Cỡ chữ ưu tiên" else "Cỡ chữ", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

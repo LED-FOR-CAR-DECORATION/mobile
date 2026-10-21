@@ -42,18 +42,21 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
             MirageHomeScreen(control, scanner, user,
                 openScan = { navController.navigate("scan") }, openControl = { navController.navigate("control") },
                 openCanvas = { openCanvas(it) }, openMarquee = { navController.navigate("marquee") },
-                openUpload = { navController.navigate("image") }, openCharacter = { navController.navigate("character/$it") }, logout = {
+                openUpload = { navController.navigate("image") }, openEffect = { navController.navigate("effect") }, openCharacter = { navController.navigate("character/$it") }, logout = {
                     scope.launch { ServiceLocator.logoutUseCase(); navController.navigate("login") { popUpTo(0) { inclusive = true } } }
                 })
         }
         composable("scan") { MirageScanScreen(scanner) { navController.popBackStack() } }
         composable("control") {
-            MirageControlScreen(control, { navController.popBackStack() }, { navController.navigate("scan") }, { navController.navigate("library") }, { navController.navigate("marquee") })
+            MirageControlScreen(control, { navController.popBackStack() }, { navController.navigate("scan") })
+        }
+        composable("effect") {
+            MirageEffectScreen(control, { navController.popBackStack() }, { navController.navigate("scan") })
         }
         composable("library") {
             MirageHomeScreen(control, scanner, user,
                 openScan = { navController.navigate("scan") }, openControl = { navController.navigate("control") },
-                openCanvas = { openCanvas(it) }, openMarquee = { navController.navigate("marquee") }, openUpload = { navController.navigate("image") }, openCharacter = { navController.navigate("character/$it") },
+                openCanvas = { openCanvas(it) }, openMarquee = { navController.navigate("marquee") }, openUpload = { navController.navigate("image") }, openEffect = { navController.navigate("effect") }, openCharacter = { navController.navigate("character/$it") },
                 logout = { scope.launch { ServiceLocator.logoutUseCase(); navController.navigate("login") { popUpTo(0) { inclusive = true } } } }, initialTab = 1)
         }
         composable("studio?draft={draft}") { entry ->
@@ -72,8 +75,14 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
             else androidx.compose.material3.Text("Không tìm thấy Character trong Inventory.")
         }
         composable("marquee") { entry ->
-            val vm: MarqueeViewModel = viewModel(entry, factory = factory { MarqueeViewModel(ServiceLocator.bleUseCases) })
-            MirageMarqueeScreen(vm, { navController.popBackStack() })
+            val accountId = user?.id
+            if (accountId == null) androidx.compose.material3.Text("Đang tải tài khoản…")
+            else {
+                val vm: MarqueeViewModel = viewModel(entry, key = "marquee:$accountId", factory = factory {
+                    MarqueeViewModel(ServiceLocator.bleUseCases, com.carled.app.data.local.TextProfileStore(context, accountId))
+                })
+                MirageMarqueeScreen(vm, { navController.popBackStack() })
+            }
         }
     }
 }

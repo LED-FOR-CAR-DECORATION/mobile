@@ -3,6 +3,7 @@ package com.carled.app.data.repository
 import com.carled.app.data.ble.BleProtocolHelper
 import com.carled.app.data.ble.CarLedBleManager
 import com.carled.app.data.ble.TouchPoint
+import com.carled.app.data.ble.ConfirmedCanvasSender
 import com.carled.app.domain.model.BleDeviceModel
 import com.carled.app.domain.model.ConnectionState
 import com.carled.app.domain.model.DeviceTelemetryStatus
@@ -96,7 +97,7 @@ class BleDeviceRepositoryImpl(
     }
 
     override suspend fun clearCanvas() {
-        bleManager.sendCommand(BleProtocolHelper.buildCanvasClearFrame(), throttled = false)
+        liveSender.clear()
     }
 
     override suspend fun reloadProjection() {
@@ -109,9 +110,13 @@ class BleDeviceRepositoryImpl(
      *   2. Gửi từng PROJECTION_CHUNK [0x11] (tối đa 240 bytes/chunk)
      *   3. Gửi PROJECTION_FINISH [0x12]
      */
-    override suspend fun uploadProjection(rgb565Data: ByteArray) {
+    override suspend fun uploadProjection(rgb565Data: ByteArray) = uploadAnimation(rgb565Data, 1, 200)
+
+    override suspend fun uploadAnimation(rgb565Data: ByteArray, frameCount: Int, frameDelayMs: Int) {
+        require(frameCount in 1..255 && frameDelayMs in 1..65535)
+        require(rgb565Data.size == 64 * 32 * 2 * frameCount) { "Invalid projection frame length" }
         bleManager.sendCommand(
-            BleProtocolHelper.buildProjectionStartFrame(frameCount = 1, width = 64, height = 32),
+            BleProtocolHelper.buildProjectionStartFrame(frameCount = frameCount, width = 64, height = 32, frameDelayMs = frameDelayMs),
             throttled = false
         )
         delay(200)
@@ -143,9 +148,8 @@ class BleDeviceRepositoryImpl(
         bleManager.sendCommand(frame, throttled = false)
     }
 
+    private val liveSender = ConfirmedCanvasSender(telemetryEvent, { frame -> bleManager.sendCommand(frame, throttled = false) })
     override suspend fun sendBatchDraw(points: List<TouchPoint>) {
-        if (points.isEmpty()) return
-        val frame = BleProtocolHelper.buildBatchDrawFrame(points)
-        bleManager.sendCommand(frame, throttled = false)
+        liveSender.send(points)
     }
 }

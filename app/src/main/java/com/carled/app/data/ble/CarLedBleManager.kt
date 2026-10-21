@@ -316,6 +316,7 @@ class CarLedBleManager(private val context: Context) {
             if (obj.has("event")) {
                 // ── Event packet ──
                 val event = when (val eventName = obj.optString("event")) {
+                    "canvas_batch_applied" -> TelemetryEvent.CanvasBatchApplied(obj.optInt("sequence", -1))
                     "upload_started"     -> TelemetryEvent.UploadStarted(
                         expected = obj.optInt("expected", 0)
                     )

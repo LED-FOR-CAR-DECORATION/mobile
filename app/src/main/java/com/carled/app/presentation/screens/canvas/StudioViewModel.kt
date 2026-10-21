@@ -10,6 +10,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.UUID
 import com.carled.app.data.ble.TouchPoint
+import com.carled.app.data.ble.BleProtocolHelper
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -74,7 +75,7 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
                             }
                             val current = requireNotNull(wire)
                             val target = livePixels(document)
-                            val indices = target.indices.filter { target[it] != current[it] }.take(15)
+                            val indices = target.indices.filter { target[it] != current[it] }.take(BleProtocolHelper.MAX_DRAW_POINTS)
                             if (indices.isEmpty()) { _state.update { it.copy(syncing = false) }; return@withLock false }
                             if (resumeAfterSave) {
                                 // Firmware resets an uploaded image on the first live pixel.

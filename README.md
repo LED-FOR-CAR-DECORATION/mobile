@@ -100,9 +100,33 @@ The marquee screen exposes 5×7 and 10×14 glyph presets. Static mode centers an
 
 ### DIY LIVE and two save destinations
 
-On a connected64×32 canvas, LIVE sends the latest composite raster through existing clear(0x15)/batch-draw(0x14) firmware commands. Up to15 changed pixels are sent per40ms batch, coalescing old gesture positions; erase, fill, shapes, mirror, text overlays, undo/redo and image import converge to the same final frame. LIVE never invokes the flash upload protocol. Reconnection and re-enabling LIVE initialize and replay the current canvas. A write failure pauses LIVE and offers retry through its switch. Dense imports may take several seconds to synchronize.
+On a connected64×32 canvas, LIVE sends the latest composite raster through confirmed0x1A firmware commands (count0 clears). Up to12 changed pixels are sent per batch after receiver confirmation, with40ms pacing, coalescing old gesture positions; erase, fill, shapes, mirror, text overlays, undo/redo and image import converge to the same final frame. LIVE never invokes the flash upload protocol. Reconnection and re-enabling LIVE initialize and replay the current canvas. A write failure pauses LIVE and offers retry through its switch. Dense imports may take several seconds to synchronize.
 
 - **Lưu lên thiết bị LED**: serializes against LIVE, uploads the full64×32 frame into the firmware's current SPIFFS projection slot, and reports success only on UploadComplete; it does not save a Gallery draft. Existing device projection is replaced. Editing pauses during the flash transfer.
 - **Lưu vào Gallery**: saves the document, name and editable text blocks locally; works offline, does not write device flash.32×32/64×64 remain Gallery-only.
 
 The firmware sets uploaded patterns out of live-drawing mode. On the first subsequent edit the mobile explicitly reinitializes LIVE and replays the full canvas, preventing firmware's first-live-pixel reset from erasing previous artwork. No firmware flash required.
+
+### Separate Effect feature
+
+Thiết bị → Điều khiển LED contains only power and hardware brightness. Thiết bị → Effect is an independent route sharing the existing control ViewModel: solid color (HSV wheel/RGB/HSV), breathing, rainbow, chase and music effects, with speed/sensitivity only where applicable. The root launcher uses a2×2 grid: DIY pixel, Chạy chữ, Nhập ảnh, Effect. Character content and marquee remain their own features.
+
+### Blink marquee uses stationary auto-fit
+
+Blink now shares static text layout and validation: center/word-wrap, preferred5×7 or10×14 with fallback, overflow blocked. The app uploads two64×32 RGB565 frames (the identical static lit raster, then all black) through the firmware's existing multi-frame projection transport. The LED loops them autonomously after UploadComplete, without keeping the phone connected or repeatedly writing flash. Header frame delay is400ms; firmware scales the actual animation cadence by its current effect-speed setting. The screen previews the complete lit frame and identifies blink mode. Scroll keeps its existing text command. Single-frame uploads used by photos, DIY saves and static text remain unchanged.
+
+### Text profiles and plan quotas
+
+Chạy chữ supports named profiles storing text, preferred glyph size, mode, RGB/rainbow and speed, with load, create, update/rename and confirmed delete. Selecting or saving a profile does not send anything to LED. Profiles persist locally per authenticated user ID and survive app restarts. BASIC defaults to3 slots; EXPANDED supports10. Existing profiles remain readable/updatable/deletable after a downgrade, while new entries are blocked when at/over quota.
+
+`TextProfilePlanProvider` is the future verified-entitlement integration point. The production placeholder always grants BASIC: there is no implemented subscription/payment API in the current FE/BE. The upgrade dialog is informational and cannot unlock paid slots or charge money. Future BE integration must authorize plan purchases and enforce cloud quotas server-side; client-side local limits alone are not billing authorization. Expanded quota is exercised with an injected provider only in tests. Read/decode failures preserve existing storage and disable saves until reloaded.
+
+### DIY LIVE reliability fix — requires matching ESP32 firmware
+
+The old actor consumed15 pixels while the encoder silently kept only12; the last3 pixels were then incorrectly considered sent. The actor and encoder now share MAX_DRAW_POINTS=12, oversized legacy frames are rejected, and the repository splits larger submissions without dropping points.
+
+New opcode0x1A: AA,1A,sequence-high,sequence-low,count,(x,y,r,g,b)*count,XOR,55. Count0 clears the live canvas. ESP32 emits `{event:canvas_batch_applied,sequence:N}` only after the entire operation has committed to its framebuffer. The app allows one outstanding packet, retries the identical absolute write up to3 times, ignores stale sequence ACKs and pauses LIVE on failure. Old firmware cannot acknowledge this opcode; the app reports that the ESP32 must be updated rather than claiming success.
+
+Firmware fixes stop repeated CUSTOM_PRESET selections from reloading Flash on every batch, avoid repeated NVS mode writes, update the authoritative canvas under one mutex, and mark it dirty for the renderer. The BLE batch callback no longer draws directly into DMA. The saved canvas is redrawn after power/turn-signal overrides. Legacy HTML0x13/0x14 drawing remains supported.
+
+Build/upload from `D:\SEP\IoT-Device` with `pio run -e esp32dev -t upload` after selecting the intended ESP32 port. Do not erase SPIFFS. Production firmware: `.pio/build/esp32dev/firmware.bin`; test firmware is in a separate environment. Compile hardware regressions without flashing using `pio test -e esp32dev-live-test --without-uploading --without-testing`; run the suite on an ESP32 separately when hardware is available. Software tests do not verify the physical HUB75 panel.

@@ -33,3 +33,11 @@ Implementation: local DIY Gallery; separate mocked Character inventory using FE 
 ## V5 — DIY LIVE
 
 `94be36dea83249d2a70cbe6a320540a7` — DIY Pixel LIVE V5. LIVE status/switch, clear canvas, existing pixel tools and phone photo import. Two separate sticky actions: Lưu lên thiết bị LED (SPIFFS, confirmed by device) and Lưu vào Gallery (phone, offline). Existing firmware opcodes are reused; no firmware update is required. Dense changes synchronize progressively; LIVE itself never saves Flash.
+
+## V6 — Separate Effect feature
+
+- `02e49fc7691d427995ae6b825fc63569` — 01 Thiết bị của tôi — Home V6
+- `49b9215577e045c7a3359f47334c1999` — 02 Điều khiển LED — Tối giản V6
+- `36a111275c5344489639694758cefc5c` — 03 Effect — Màu đơn sắc & Hiệu ứng V6
+
+Root functions form a2×2 grid (DIY pixel, Chạy chữ, Nhập ảnh, Effect). Control is power plus one brightness slider only. Effect is a separate route with solid color, breathing, rainbow, chase and music modes; color wheel and advanced RGB/HSV remain here. No power/brightness controls on Effect and no effect choices on Control. Final Stitch edit removed automatic preset brightness buttons and a manual apply button to match the app's live controls.

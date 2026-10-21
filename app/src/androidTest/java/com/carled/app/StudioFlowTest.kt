@@ -165,7 +165,7 @@ class StudioFlowTest {
     private fun screenshot(context: Context, name: String) {
         compose.waitForIdle()
         val directory = File(context.getExternalFilesDir(null), "qa").apply { mkdirs() }
-        val bitmap = requireNotNull(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+        val bitmap = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: compose.onRoot().captureToImage().asAndroidBitmap()
         File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 }

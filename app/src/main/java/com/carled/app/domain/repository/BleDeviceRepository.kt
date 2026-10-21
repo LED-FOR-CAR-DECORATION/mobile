@@ -55,9 +55,12 @@ interface BleDeviceRepository {
     /** Upload ảnh lên ESP32 (Binary Projection Protocol) */
     suspend fun uploadProjection(rgb565Data: ByteArray)
 
+    /** Consecutive full64×32 RGB565 frames, played by firmware without phone timers. */
+    suspend fun uploadAnimation(rgb565Data: ByteArray, frameCount: Int, frameDelayMs: Int)
+
     /** Gửi một điểm vẽ đơn lẻ qua BLE */
     suspend fun sendSinglePixel(x: Int, y: Int, r: Int, g: Int, b: Int)
 
-    /** Gửi batch điểm vẽ gộp (tối đa 15 điểm/gói, tần suất 25 FPS) */
+    /** Gửi batch điểm vẽ gộp (tối đa 12 điểm/gói, chờ xác nhận ESP32, tần suất 25 FPS) */
     suspend fun sendBatchDraw(points: List<TouchPoint>)
 }
