@@ -1,27 +1,40 @@
-package com.example.myapplication.ui.auth
+package com.carled.app.presentation.screens.auth
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.carled.app.presentation.components.WindowFrame
 import com.carled.app.presentation.theme.Cream
 import com.carled.app.presentation.theme.Ink
-import com.carled.app.presentation.components.WindowFrame
 
+private const val LANDSCAPE_WINDOW_FRACTION = 0.7f
+private const val PORTRAIT_HERO_FRACTION = 0.45f
+private val PortraitSideMargin = 12.dp
+
+private val PortraitScrim = Brush.verticalGradient(
+    listOf(Ink.copy(alpha = 0.4f), Ink.copy(alpha = 0.8f), Ink)
+)
+
+private val LandscapeScrim = Brush.verticalGradient(
+    listOf(Ink.copy(alpha = 0.6f), Ink.copy(alpha = 0f))
+)
 
 @Composable
 fun AuthScaffold(
@@ -33,31 +46,72 @@ fun AuthScaffold(
     footer: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(modifier.fillMaxSize().background(Ink).imePadding()) {
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            hero()
-            Text(
-                text = heroTitle,
-                color = Cream,
-                fontSize = 36.sp,
-                lineHeight = 40.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .statusBarsPadding()
-                    .padding(24.dp)
-            )
+    BoxWithConstraints(modifier.fillMaxSize().background(Ink).imePadding()) {
+        if (maxWidth > maxHeight) {
+            Box(Modifier.fillMaxSize()) {
+                HeroBackdrop(hero, LandscapeScrim)
+                HeroTitle(heroTitle)
+                WindowFrame(
+                    title = windowTitle,
+                    onClose = onClose,
+                    footer = footer,
+                    compact = true,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .systemBarsPadding()
+                        .fillMaxHeight()
+                        .fillMaxWidth(LANDSCAPE_WINDOW_FRACTION),
+                    content = content
+                )
+            }
+        } else {
+            Box(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .fillMaxHeight(PORTRAIT_HERO_FRACTION)
+                ) {
+                    HeroBackdrop(hero, PortraitScrim)
+                }
+                HeroTitle(heroTitle)
+                WindowFrame(
+                    title = windowTitle,
+                    onClose = onClose,
+                    footer = footer,
+                    compact = true,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .systemBarsPadding()
+                        .padding(horizontal = PortraitSideMargin, vertical = 16.dp)
+                        .fillMaxWidth(),
+                    content = content
+                )
+            }
         }
-        WindowFrame(
-            title = windowTitle,
-            onClose = onClose,
-            footer = footer,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .navigationBarsPadding()
-                .padding(bottom = 16.dp),
-            content = content
-        )
     }
+}
+
+@Composable
+private fun BoxScope.HeroBackdrop(
+    hero: @Composable BoxScope.() -> Unit,
+    scrim: Brush
+) {
+    hero()
+    Box(Modifier.fillMaxSize().background(scrim))
+}
+
+@Composable
+private fun BoxScope.HeroTitle(title: String) {
+    Text(
+        text = title,
+        color = Cream,
+        fontSize = 36.sp,
+        lineHeight = 40.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .align(Alignment.TopStart)
+            .statusBarsPadding()
+            .padding(24.dp)
+    )
 }

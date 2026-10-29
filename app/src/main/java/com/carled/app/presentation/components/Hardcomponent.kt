@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +27,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
@@ -43,6 +47,7 @@ import com.carled.app.presentation.theme.ErrorRed
 import com.carled.app.presentation.theme.FieldGrey
 import com.carled.app.presentation.theme.Green
 import com.carled.app.presentation.theme.GreenDark
+import com.carled.app.presentation.theme.GreenLight
 import com.carled.app.presentation.theme.Ink
 
 object HardStyle {
@@ -73,7 +78,7 @@ fun HardButton(
     Box(
         modifier = modifier
             .alpha(if (enabled) 1f else 0.5f)
-            .hardSurface(color = if (filled) Green else Cream, offset = shadowOffset)
+            .hardSurface(color = if (filled) GreenLight else Cream, offset = shadowOffset)
             .clickable(enabled = enabled && !loading, role = Role.Button, onClick = onClick)
             .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center
@@ -81,7 +86,7 @@ fun HardButton(
         if (loading) {
             CircularProgressIndicator(Modifier.size(18.dp), color = textColor, strokeWidth = 2.dp)
         } else {
-            Text(text, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text(text, color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -133,14 +138,14 @@ fun HardTextField(
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
 
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(label, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(FieldGrey)
                 .then(if (error != null) Modifier.border(1.5.dp, ErrorRed) else Modifier)
-                .padding(horizontal = 10.dp, vertical = 10.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -182,26 +187,65 @@ fun SocialLoginBar(
     providers: List<String> = listOf("Google", "Facebook", "Apple", "X"),
     enabled: Boolean = true
 ) {
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Login with", color = Ink, fontSize = 13.sp)
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally)
-        ) {
-            providers.forEach { name ->
-                Box(
-                    Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(FieldGrey)
-                        .clickable(enabled = enabled, role = Role.Button, onClickLabel = "Login with $name") {
-                            onProviderClick(name)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(name.first().toString(), color = Ink, fontSize = 13.sp)
-                }
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val wide = maxWidth >= 360.dp
+        Row(Modifier.fillMaxWidth()) {
+            LoginWithLabel(Modifier.padding(end = 20.dp))
+            Box(
+                Modifier.weight(1f).padding(top = 15.dp, end = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                SocialButtons(
+                    providers = providers,
+                    size = if (wide) 32.dp else 30.dp,
+                    spacing = if (wide) 20.dp else 10.dp,
+                    enabled = enabled,
+                    onProviderClick = onProviderClick
+                )
             }
         }
     }
+}
+
+@Composable
+private fun SocialButtons(
+    providers: List<String>,
+    size: Dp,
+    spacing: Dp,
+    enabled: Boolean,
+    onProviderClick: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(spacing)) {
+        providers.forEach { name ->
+            Box(
+                Modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(FieldGrey)
+                    .clickable(enabled = enabled, role = Role.Button, onClickLabel = "Login with $name") {
+                        onProviderClick(name)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(name.first().toString(), color = Ink, fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoginWithLabel(modifier: Modifier = Modifier) {
+    Text(
+        "Login with",
+        color = Ink,
+        fontSize = 16.sp,
+        modifier = modifier.drawBehind {
+            drawRect(
+                color = GreenDark,
+                topLeft = Offset(size.width * 0.13f, size.height * 0.51f),
+                size = Size(size.width * 1.07f, size.height * 0.79f)
+            )
+        }
+    )
 }
