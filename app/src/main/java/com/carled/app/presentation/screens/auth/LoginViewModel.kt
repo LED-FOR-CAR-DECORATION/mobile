@@ -20,7 +20,7 @@ class LoginViewModel(
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
-    // region Mode
+    //Mode
 
     fun toggleMode() = _uiState.update { it.withMode(!it.isRegisterMode) }
 
@@ -32,10 +32,8 @@ class LoginViewModel(
         successMessage = null
     )
 
-    // endregion
 
-    // region Input handlers
-
+    //Input
     fun onEmailChange(newEmail: String) =
         _uiState.update { it.copy(email = newEmail, errorMessage = null) }
 
@@ -57,9 +55,8 @@ class LoginViewModel(
     fun toggleConfirmPasswordVisibility() =
         _uiState.update { it.copy(isConfirmPasswordVisible = !it.isConfirmPasswordVisible) }
 
-    // endregion
 
-    // region Actions
+    //Actions
 
     fun submit(onSuccess: () -> Unit) {
         if (_uiState.value.isRegisterMode) register(onSuccess) else login(onSuccess)
@@ -80,15 +77,14 @@ class LoginViewModel(
     }
 
     fun loginWithSocial(provider: String, onSuccess: () -> Unit) {
-        // Mô phỏng xác thực OAuth nhanh với provider
         // TODO: replace with real OAuth before release
         authenticate(onSuccess) {
             loginUseCase("$provider$SOCIAL_EMAIL_SUFFIX", SOCIAL_PLACEHOLDER_PASSWORD)
         }
     }
 
-    // endregion
-    
+    // Auth func
+
     private fun authenticate(
         onSuccess: () -> Unit,
         successMessage: String? = null,

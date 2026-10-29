@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.carled.app"
-    compileSdk = 34
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.carled.app"
