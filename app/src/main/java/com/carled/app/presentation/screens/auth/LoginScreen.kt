@@ -1,13 +1,16 @@
 package com.carled.app.presentation.screens.auth
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -94,7 +97,7 @@ private fun LoginScreenContent(
     val passwordIsLastField = !state.isRegisterMode
 
     AuthScaffold(
-        heroTitle = if (state.isRegisterMode) "Join our\ncommunity\nTODAY." else "Welcome\nback.",
+        heroTitle = "",
         windowTitle = if (state.isRegisterMode) "Sign up for an account" else "Login",
         modifier = modifier,
         onClose = onClose,
@@ -205,12 +208,16 @@ private fun LoginScreenContent(
 
 @Composable
 private fun BoxScope.LoginHero() {
-    Image(
-        painter = painterResource(id = R.drawable.login_bg),
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
+    Box(
         modifier = Modifier.fillMaxSize()
-    )
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.bg_image2), // or R.drawable.login_bg
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
 }
 
 @Preview(showBackground = true, showSystemUi = true)

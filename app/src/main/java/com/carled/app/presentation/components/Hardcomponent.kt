@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -54,15 +55,16 @@ object HardStyle {
     val Border = 1.5.dp
     val CardOffset = 6.dp
     val SmallOffset = 4.dp
+    val CornerRadius = 6.dp
 }
 
 fun Modifier.hardSurface(
     color: Color = Green,
     offset: Dp = HardStyle.CardOffset
 ): Modifier = this
-    .padding(end = offset, bottom = offset)   // reserves room, no manual padding in parents
-    .background(color)
-    .border(HardStyle.Border, Ink)
+    .padding(end = offset, bottom = offset)
+    .background(color, RoundedCornerShape(HardStyle.CornerRadius))
+    .border(HardStyle.Border, Ink, RoundedCornerShape(HardStyle.CornerRadius))
 
 @Composable
 fun HardButton(
@@ -73,12 +75,13 @@ fun HardButton(
     loading: Boolean = false,
     filled: Boolean = true,
     textColor: Color = Ink,
-    shadowOffset: Dp = 0.dp   // pass 0.dp for a flat button
+    shadowOffset: Dp = 0.dp
 ) {
     Box(
         modifier = modifier
             .alpha(if (enabled) 1f else 0.5f)
             .hardSurface(color = if (filled) GreenLight else Cream, offset = shadowOffset)
+            .clip(RoundedCornerShape(HardStyle.CornerRadius))
             .clickable(enabled = enabled && !loading, role = Role.Button, onClick = onClick)
             .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center
@@ -112,8 +115,9 @@ fun HardCheckbox(
         Box(
             Modifier
                 .size(14.dp)
+                .clip(RoundedCornerShape(2.dp))
                 .background(if (checked) Green else FieldGrey)
-                .border(1.dp, Ink),
+                .border(1.dp, Ink, RoundedCornerShape(2.dp)),
             contentAlignment = Alignment.Center
         ) {
             if (checked) CheckGlyph()
@@ -143,8 +147,14 @@ fun HardTextField(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(RoundedCornerShape(HardStyle.CornerRadius))
                 .background(FieldGrey)
-                .then(if (error != null) Modifier.border(1.5.dp, ErrorRed) else Modifier)
+                .then(
+                    if (error != null)
+                        Modifier.border(1.5.dp, ErrorRed, RoundedCornerShape(HardStyle.CornerRadius))
+                    else
+                        Modifier.border(1.dp, Ink.copy(alpha = 0.2f), RoundedCornerShape(HardStyle.CornerRadius))
+                )
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically

@@ -25,7 +25,6 @@ import com.carled.app.presentation.theme.Cream
 import com.carled.app.presentation.theme.Ink
 
 private const val LANDSCAPE_WINDOW_FRACTION = 0.7f
-private const val PORTRAIT_HERO_FRACTION = 0.45f
 private val PortraitSideMargin = 12.dp
 
 private val PortraitScrim = Brush.verticalGradient(
@@ -38,7 +37,7 @@ private val LandscapeScrim = Brush.verticalGradient(
 
 @Composable
 fun AuthScaffold(
-    heroTitle: String,
+    heroTitle: String = "", // Default to empty so it's optional
     windowTitle: String,
     modifier: Modifier = Modifier,
     onClose: (() -> Unit)? = null,
@@ -46,11 +45,13 @@ fun AuthScaffold(
     footer: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    BoxWithConstraints(modifier.fillMaxSize().background(Ink).imePadding()) {
+    BoxWithConstraints(modifier.fillMaxSize().background(Cream).imePadding()) {
         if (maxWidth > maxHeight) {
             Box(Modifier.fillMaxSize()) {
                 HeroBackdrop(hero, LandscapeScrim)
-                HeroTitle(heroTitle)
+                if (heroTitle.isNotBlank()) {
+                    HeroTitle(heroTitle)
+                }
                 WindowFrame(
                     title = windowTitle,
                     onClose = onClose,
@@ -69,12 +70,15 @@ fun AuthScaffold(
                 Box(
                     Modifier
                         .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .fillMaxHeight(PORTRAIT_HERO_FRACTION)
+                        .fillMaxSize()
                 ) {
                     HeroBackdrop(hero, PortraitScrim)
                 }
-                HeroTitle(heroTitle)
+
+                if (heroTitle.isNotBlank()) {
+                    HeroTitle(heroTitle)
+                }
+
                 WindowFrame(
                     title = windowTitle,
                     onClose = onClose,
@@ -98,7 +102,7 @@ private fun BoxScope.HeroBackdrop(
     scrim: Brush
 ) {
     hero()
-    Box(Modifier.fillMaxSize().background(scrim))
+    // Box(Modifier.fillMaxSize().background(scrim)) // Scrim commented out to keep full-color image
 }
 
 @Composable

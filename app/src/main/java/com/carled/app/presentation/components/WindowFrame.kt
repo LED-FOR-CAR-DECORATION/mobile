@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +34,8 @@ import com.carled.app.presentation.theme.GreenDark
 import com.carled.app.presentation.theme.GreenLight
 import com.carled.app.presentation.theme.Ink
 
+private val WindowCornerRadius = 8.dp
+
 @Composable
 fun WindowFrame(
     title: String,
@@ -42,7 +45,12 @@ fun WindowFrame(
     compact: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(modifier.background(Cream).border(1.5.dp, Ink)) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(WindowCornerRadius))
+            .background(Cream)
+            .border(1.5.dp, Ink, RoundedCornerShape(WindowCornerRadius))
+    ) {
         WindowTitleBar(title, onClose)
         Divider()
         Column(
@@ -72,7 +80,10 @@ private fun Divider() {
 @Composable
 private fun WindowTitleBar(title: String, onClose: (() -> Unit)?) {
     Row(
-        Modifier.fillMaxWidth().height(32.dp).background(Color.White),
+        Modifier
+            .fillMaxWidth()
+            .height(32.dp)
+            .background(Color.White),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
