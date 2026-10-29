@@ -3,6 +3,7 @@ package com.carled.app.presentation.screens.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.carled.app.core.common.Resource
+import com.carled.app.domain.model.User // TODO: adjust to the actual type of LoginUiState.loggedInUser
 import com.carled.app.domain.usecase.auth.LoginUseCase
 import com.carled.app.domain.usecase.auth.RegisterUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,138 +20,107 @@ class LoginViewModel(
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
-    fun toggleMode() {
-        _uiState.update {
-            it.copy(
-                isRegisterMode = !it.isRegisterMode,
-                errorMessage = null,
-                successMessage = null
-            )
-        }
-    }
+    // region Mode
 
-    fun setRegisterMode(isRegister: Boolean) {
-        _uiState.update {
-            it.copy(
-                isRegisterMode = isRegister,
-                errorMessage = null,
-                successMessage = null
-            )
-        }
-    }
+    fun toggleMode() = _uiState.update { it.withMode(!it.isRegisterMode) }
 
-    fun onEmailChange(newEmail: String) {
+    fun setRegisterMode(isRegister: Boolean) = _uiState.update { it.withMode(isRegister) }
+
+    private fun LoginUiState.withMode(isRegister: Boolean) = copy(
+        isRegisterMode = isRegister,
+        errorMessage = null,
+        successMessage = null
+    )
+
+    // endregion
+
+    // region Input handlers
+
+    fun onEmailChange(newEmail: String) =
         _uiState.update { it.copy(email = newEmail, errorMessage = null) }
-    }
 
-    fun onPasswordChange(newPassword: String) {
+    fun onPasswordChange(newPassword: String) =
         _uiState.update { it.copy(password = newPassword, errorMessage = null) }
-    }
 
-    fun onConfirmPasswordChange(newConfirmPassword: String) {
+    fun onConfirmPasswordChange(newConfirmPassword: String) =
         _uiState.update { it.copy(confirmPassword = newConfirmPassword, errorMessage = null) }
-    }
 
-    fun onRememberMeChange(checked: Boolean) {
+    fun onRememberMeChange(checked: Boolean) =
         _uiState.update { it.copy(rememberMe = checked) }
-    }
 
-    fun onAcceptTermsChange(checked: Boolean) {
+    fun onAcceptTermsChange(checked: Boolean) =
         _uiState.update { it.copy(acceptTerms = checked, errorMessage = null) }
-    }
 
-    fun togglePasswordVisibility() {
+    fun togglePasswordVisibility() =
         _uiState.update { it.copy(isPasswordVisible = !it.isPasswordVisible) }
-    }
 
-    fun toggleConfirmPasswordVisibility() {
+    fun toggleConfirmPasswordVisibility() =
         _uiState.update { it.copy(isConfirmPasswordVisible = !it.isConfirmPasswordVisible) }
-    }
+
+    // endregion
+
+    // region Actions
 
     fun submit(onSuccess: () -> Unit) {
-        if (_uiState.value.isRegisterMode) {
-            register(onSuccess)
-        } else {
-            login(onSuccess)
-        }
+        if (_uiState.value.isRegisterMode) register(onSuccess) else login(onSuccess)
     }
 
     fun login(onSuccess: () -> Unit) {
-        val email = _uiState.value.email
-        val password = _uiState.value.password
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            when (val result = loginUseCase(email, password)) {
-                is Resource.Success -> {
-                    _uiState.update {
-                        it.copy(isLoading = false, loggedInUser = result.data)
-                    }
-                    onSuccess()
-                }
-                is Resource.Error -> {
-                    _uiState.update {
-                        it.copy(isLoading = false, errorMessage = result.message)
-                    }
-                }
-                is Resource.Loading -> {
-                    _uiState.update { it.copy(isLoading = true) }
-                }
-            }
+        val state = _uiState.value
+        authenticate(onSuccess) {
+            loginUseCase(state.email, state.password)
         }
     }
 
     fun register(onSuccess: () -> Unit) {
-        val email = _uiState.value.email
-        val password = _uiState.value.password
-        val confirmPassword = _uiState.value.confirmPassword
-        val acceptTerms = _uiState.value.acceptTerms
+        val state = _uiState.value
+        authenticate(onSuccess, successMessage = REGISTER_SUCCESS_MESSAGE) {
+            registerUseCase(state.email, state.password, state.confirmPassword, state.acceptTerms)
+        }
+    }
 
+    fun loginWithSocial(provider: String, onSuccess: () -> Unit) {
+        // Mô phỏng xác thực OAuth nhanh với provider
+        // TODO: replace with real OAuth before release
+        authenticate(onSuccess) {
+            loginUseCase("$provider$SOCIAL_EMAIL_SUFFIX", SOCIAL_PLACEHOLDER_PASSWORD)
+        }
+    }
+
+    // endregion
+    
+    private fun authenticate(
+        onSuccess: () -> Unit,
+        successMessage: String? = null,
+        call: suspend () -> Resource<User>
+    ) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            when (val result = registerUseCase(email, password, confirmPassword, acceptTerms)) {
+            _uiState.update {
+                it.copy(isLoading = true, errorMessage = null, successMessage = null)
+            }
+
+            when (val result = call()) {
                 is Resource.Success -> {
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             loggedInUser = result.data,
-                            successMessage = "Đăng ký tài khoản thành công!"
+                            successMessage = successMessage
                         )
                     }
                     onSuccess()
                 }
-                is Resource.Error -> {
-                    _uiState.update {
-                        it.copy(isLoading = false, errorMessage = result.message)
-                    }
+                is Resource.Error -> _uiState.update {
+                    it.copy(isLoading = false, errorMessage = result.message)
                 }
-                is Resource.Loading -> {
-                    _uiState.update { it.copy(isLoading = true) }
-                }
+                is Resource.Loading -> _uiState.update { it.copy(isLoading = true) }
             }
         }
     }
 
-    fun loginWithSocial(provider: String, onSuccess: () -> Unit) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            // Mô phỏng xác thực OAuth nhanh với provider
-            when (val result = loginUseCase("$provider.user@carled.vn", "social_pass_123")) {
-                is Resource.Success -> {
-                    _uiState.update {
-                        it.copy(isLoading = false, loggedInUser = result.data)
-                    }
-                    onSuccess()
-                }
-                is Resource.Error -> {
-                    _uiState.update {
-                        it.copy(isLoading = false, errorMessage = result.message)
-                    }
-                }
-                is Resource.Loading -> {
-                    _uiState.update { it.copy(isLoading = true) }
-                }
-            }
-        }
+    private companion object {
+        const val REGISTER_SUCCESS_MESSAGE = "Đăng ký tài khoản thành công!"
+        const val SOCIAL_EMAIL_SUFFIX = ".user@carled.vn"
+        const val SOCIAL_PLACEHOLDER_PASSWORD = "social_pass_123"
     }
 }
