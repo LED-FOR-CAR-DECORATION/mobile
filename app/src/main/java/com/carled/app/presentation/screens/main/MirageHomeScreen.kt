@@ -33,6 +33,11 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
     var confirmDisconnect by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
+    var firmware by remember { mutableStateOf(false) }
+    if (firmware) {
+        com.carled.app.presentation.screens.firmware.FirmwareUpdateScreen(onClose={firmware=false})
+        return
+    }
     val context = LocalContext.current
     val renameScope = rememberCoroutineScope()
     var renaming by remember { mutableStateOf(false) }
@@ -98,6 +103,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                         if (device != null) {
                             TextButton(onClick = { draftName = alias; renameError = null; rename = true }) { Text("Đổi tên Bluetooth") }
                             TextButton(onClick = { confirmDisconnect = true }) { Text("Ngắt kết nối") }
+                            TextButton(onClick = { firmware = true }) { Text("Cập nhật firmware") }
                         } else MirageButton("Kết nối thiết bị", openScan, Modifier.fillMaxWidth())
                     }
                     MirageButton("Hướng dẫn Bluetooth", { help = true }, Modifier.fillMaxWidth(), secondary = true)

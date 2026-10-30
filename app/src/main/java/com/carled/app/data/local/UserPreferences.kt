@@ -19,6 +19,10 @@ class UserPreferences(context: Context) {
     }
 
     fun getAuthToken(): String? = prefs.getString(KEY_AUTH_TOKEN, null)
+    fun saveRefreshToken(token: String) { prefs.edit().putString("refresh_token", token).apply() }
+    fun getRefreshToken(): String? = prefs.getString("refresh_token", null)
+    fun pendingFirmware(deviceId: String): String? = prefs.getString("ota_$deviceId", null)
+    fun savePendingFirmware(deviceId: String, version: String?) { prefs.edit().putString("ota_$deviceId",version).apply() }
 
     fun saveUser(id: String, email: String) {
         prefs.edit()

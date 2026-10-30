@@ -9,6 +9,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
+        buildConfigField("String", "BACKEND_URL", "\"${providers.gradleProperty("backendUrl").orElse("").get().trimEnd('/')}\"")
         applicationId = "com.carled.app"
         minSdk = 26
         targetSdk = 34
@@ -39,6 +40,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources {

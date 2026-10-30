@@ -8,6 +8,9 @@ package com.carled.app.domain.model
  *  - Nếu JSON KHÔNG có field "event" → đây là Status Telemetry định kỳ (cập nhật DeviceStatus)
  */
 sealed class TelemetryEvent {
+    data class OtaInfo(val requestId: String, val deviceId: String, val version: String, val hardware: String,
+        val nonce: String, val wifi: Boolean, val configured: Boolean, val busy: Boolean, val healthy: Boolean) : TelemetryEvent()
+    data class OtaStatus(val requestId: String, val state: String, val progress: Int, val error: String) : TelemetryEvent()
     data class DeviceName(val requestId: String, val name: String, val error: String) : TelemetryEvent()
     data class CanvasBatchApplied(val sequence: Int) : TelemetryEvent()
 

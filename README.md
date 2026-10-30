@@ -1,5 +1,12 @@
 # Car LED Ambient & Projection - Mobile Application
 
+## Firmware OTA qua Wi-Fi / hotspot
+
+Tài khoản → thiết bị đã kết nối → **Cập nhật firmware**. Xem
+[hướng dẫn OTA](../backend/docs/firmware-ota.md). Build với
+`-PbackendUrl=https://YOUR_HOST` để dùng đăng nhập backend và kiểm tra OTA thật.
+Không cấu hình URL vẫn giữ chế độ prototype hiện có; OTA không hoạt động bằng token mock.
+
 ## Mirage mobile — Stitch implementation
 
 Giao diện chạy hiện tại dùng thiết kế [Mirage Mobile LED Controller](https://stitch.withgoogle.com/projects/6847000307657413933): nền sáng, xanh sage, viền đen, font Inter (giấy phép OFL kèm tại `app/src/main/assets/licenses/`). Chỉ có ba tab **Thiết bị / Nội dung / Tài khoản**, cùng đăng nhập, quét BLE, điều khiển và chạy chữ. Luồng cửa hàng/tin nhắn cũ không còn nằm trong điều hướng ứng dụng.

@@ -40,8 +40,10 @@ object ServiceLocator {
     }
 
     val apiService: ApiService by lazy {
-        MockApiService()
+        if (com.carled.app.BuildConfig.BACKEND_URL.isBlank()) MockApiService()
+        else com.carled.app.data.remote.BackendApiService(backendClient,userPreferences)
     }
+    val backendClient by lazy { com.carled.app.data.remote.BackendClient(userPreferences) }
 
     val bleDeviceRepository: BleDeviceRepository by lazy {
         BleDeviceRepositoryImpl(bleManager)
