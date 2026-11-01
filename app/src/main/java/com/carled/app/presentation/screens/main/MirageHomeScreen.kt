@@ -26,8 +26,11 @@ import com.carled.app.presentation.screens.scan.ScanViewModel
 
 @Composable
 fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: User?,
-    openScan: () -> Unit, openControl: () -> Unit, openCanvas: (String?) -> Unit,
-    openMarquee: () -> Unit, openUpload: () -> Unit, logout: () -> Unit, openEffect: () -> Unit = {}, openCharacter: (String) -> Unit = {}, initialTab: Int = 0) {
+                     openScan: () -> Unit, openControl: () -> Unit, openCanvas: (String?) -> Unit,
+                     openMarquee: () -> Unit, openUpload: () -> Unit, logout: () -> Unit,
+                     openEffect: () -> Unit = {}, openCharacter: (String) -> Unit = {},
+                     openDeviceManager: () -> Unit,
+                     initialTab: Int = 0) {
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
     var confirmLogout by remember { mutableStateOf(false) }
     var confirmDisconnect by remember { mutableStateOf(false) }
@@ -72,6 +75,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                         Text("Bật Bluetooth và thêm thiết bị LED để bắt đầu. Bạn vẫn có thể tạo bản vẽ ngoại tuyến.", color = MirageMuted)
                         MirageButton("Thêm thiết bị", openScan, Modifier.fillMaxWidth())
                     }
+                    MirageButton("Quản lý thiết bị & Firmware", openDeviceManager, Modifier.fillMaxWidth(), secondary = true)
                     Text("Tạo theo cách của bạn", style = MaterialTheme.typography.titleLarge)
                     Column(Modifier.fillMaxWidth().testTag("creationLauncher"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

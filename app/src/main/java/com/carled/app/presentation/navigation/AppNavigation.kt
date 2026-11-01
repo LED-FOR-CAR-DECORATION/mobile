@@ -1,22 +1,32 @@
 package com.carled.app.presentation.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import com.carled.app.core.di.ServiceLocator
+import com.carled.app.data.local.MockCharacterInventory
+import com.carled.app.data.local.TextProfileStore
+import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.User
 import com.carled.app.presentation.screens.auth.*
 import com.carled.app.presentation.screens.canvas.*
 import com.carled.app.presentation.screens.control.*
 import com.carled.app.presentation.screens.main.MirageHomeScreen
 import com.carled.app.presentation.screens.marquee.*
 import com.carled.app.presentation.screens.scan.*
-import kotlinx.coroutines.launch
 import com.carled.app.presentation.screens.upload.*
-import com.carled.app.data.local.MockCharacterInventory
+import kotlinx.coroutines.launch
 
 private fun <T : ViewModel> factory(create: () -> T) = object : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
@@ -26,63 +36,149 @@ private fun <T : ViewModel> factory(create: () -> T) = object : ViewModelProvide
 @Composable
 fun AppNavigation(navController: NavHostController = rememberNavController()) {
     val context = LocalContext.current.applicationContext
-    // Activity-scoped shared models; route models below are scoped to their back-stack entry.
     val control: ControlViewModel = viewModel(factory = factory { ControlViewModel(ServiceLocator.bleUseCases) })
     val scanner: ScanViewModel = viewModel(factory = factory { ScanViewModel(ServiceLocator.bleUseCases) })
-    val user by ServiceLocator.authRepository.getCurrentUser().collectAsState(initial = null)
+    val userFlow = remember { ServiceLocator.authRepository.getCurrentUser() }
+    val user by userFlow.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
-    val start = remember { if (ServiceLocator.userPreferences.getAuthToken().isNullOrBlank()) "login" else "main" }
-    fun openCanvas(id: String? = null) { navController.navigate("studio?draft=${id ?: ""}") }
+    val start = NavRoute.Login.route
+
+    val goBack: () -> Unit = { navController.popBackStack() }
+    val goScan: () -> Unit = { navController.navigate(NavRoute.Scan.route) }
+    val logout: () -> Unit = {
+        scope.launch {
+            ServiceLocator.logoutUseCase()
+            navController.navigate(NavRoute.Login.route) { popUpTo(0) { inclusive = true } }
+        }
+    }
+
     NavHost(navController, startDestination = start) {
-        composable("login") { entry ->
-            val vm: LoginViewModel = viewModel(entry, factory = factory { LoginViewModel(ServiceLocator.loginUseCase, ServiceLocator.registerUseCase) })
-            MirageLoginScreen(vm) { navController.navigate("main") { popUpTo("login") { inclusive = true }; launchSingleTop = true } }
-        }
-        composable("main") {
-            MirageHomeScreen(control, scanner, user,
-                openScan = { navController.navigate("scan") }, openControl = { navController.navigate("control") },
-                openCanvas = { openCanvas(it) }, openMarquee = { navController.navigate("marquee") },
-                openUpload = { navController.navigate("image") }, openEffect = { navController.navigate("effect") }, openCharacter = { navController.navigate("character/$it") }, logout = {
-                    scope.launch { ServiceLocator.logoutUseCase(); navController.navigate("login") { popUpTo(0) { inclusive = true } } }
-                })
-        }
-        composable("scan") { MirageScanScreen(scanner) { navController.popBackStack() } }
-        composable("control") {
-            MirageControlScreen(control, { navController.popBackStack() }, { navController.navigate("scan") })
-        }
-        composable("effect") {
-            MirageEffectScreen(control, { navController.popBackStack() }, { navController.navigate("scan") })
-        }
-        composable("library") {
-            MirageHomeScreen(control, scanner, user,
-                openScan = { navController.navigate("scan") }, openControl = { navController.navigate("control") },
-                openCanvas = { openCanvas(it) }, openMarquee = { navController.navigate("marquee") }, openUpload = { navController.navigate("image") }, openEffect = { navController.navigate("effect") }, openCharacter = { navController.navigate("character/$it") },
-                logout = { scope.launch { ServiceLocator.logoutUseCase(); navController.navigate("login") { popUpTo(0) { inclusive = true } } } }, initialTab = 1)
-        }
-        composable("studio?draft={draft}") { entry ->
-            val id = entry.arguments?.getString("draft")?.takeIf { it.isNotBlank() }
-            val vm: StudioViewModel = viewModel(entry, factory = factory { StudioViewModel(ServiceLocator.bleUseCases, context, id) })
-            StudioScreen(vm, { navController.popBackStack() })
-        }
-        composable("image") { entry ->
-            val vm: UploadViewModel = viewModel(entry, factory = factory { UploadViewModel(ServiceLocator.bleUseCases) })
-            PhotoProjectionScreen(vm, { navController.popBackStack() }, { navController.navigate("scan") })
-        }
-        composable("character/{id}") { entry ->
-            val character = MockCharacterInventory().listOwned(user?.id ?: "").firstOrNull { it.characterId == entry.arguments?.getString("id") }
-            val vm: UploadViewModel = viewModel(entry, factory = factory { UploadViewModel(ServiceLocator.bleUseCases) })
-            if (character != null) PhotoProjectionScreen(vm, { navController.popBackStack() }, { navController.navigate("scan") }, character)
-            else androidx.compose.material3.Text("Không tìm thấy Character trong Inventory.")
-        }
-        composable("marquee") { entry ->
-            val accountId = user?.id
-            if (accountId == null) androidx.compose.material3.Text("Đang tải tài khoản…")
-            else {
-                val vm: MarqueeViewModel = viewModel(entry, key = "marquee:$accountId", factory = factory {
-                    MarqueeViewModel(ServiceLocator.bleUseCases, com.carled.app.data.local.TextProfileStore(context, accountId))
-                })
-                MirageMarqueeScreen(vm, { navController.popBackStack() })
+        composable(NavRoute.Login.route) { entry ->
+            val vm: LoginViewModel = viewModel(
+                entry,
+                factory = factory { LoginViewModel(ServiceLocator.loginUseCase, ServiceLocator.registerUseCase) }
+            )
+            MirageLoginScreen(vm) {
+                navController.navigate(NavRoute.Main.route) {
+                    popUpTo(NavRoute.Login.route) { inclusive = true }
+                    launchSingleTop = true
+                }
             }
         }
+        composable(NavRoute.Main.route) {
+            HomeRoute(navController, control, scanner, user, initialTab = 0, onLogout = logout)
+        }
+        composable(NavRoute.Library.route) {
+            HomeRoute(navController, control, scanner, user, initialTab = 1, onLogout = logout)
+        }
+        composable(NavRoute.Scan.route) { MirageScanScreen(scanner) { goBack() } }
+        composable(NavRoute.Effect.route) { MirageEffectScreen(control, goBack, goScan) }
+        composable(NavRoute.Studio.route) { entry ->
+            val id = entry.arguments?.getString("draft")?.takeIf { it.isNotBlank() }
+            val vm: StudioViewModel = viewModel(
+                entry,
+                factory = factory { StudioViewModel(ServiceLocator.bleUseCases, context, id) }
+            )
+            StudioScreen(vm, goBack)
+        }
+        composable(NavRoute.Photo.route) { entry ->
+            val vm: UploadViewModel = viewModel(entry, factory = factory { UploadViewModel(ServiceLocator.bleUseCases) })
+            PhotoProjectionScreen(vm, goBack, goScan)
+        }
+        composable(NavRoute.Character.route) { entry ->
+            val account = user
+            if (account == null) {
+                RouteMessage("Đang tải tài khoản…")
+            } else {
+                val characterId = entry.arguments?.getString("id")
+                val character = remember(account.id, characterId) {
+                    MockCharacterInventory().listOwned(account.id).firstOrNull { it.characterId == characterId }
+                }
+                if (character == null) {
+                    RouteMessage("Không tìm thấy Character trong Inventory.")
+                } else {
+                    val vm: UploadViewModel = viewModel(
+                        entry,
+                        factory = factory { UploadViewModel(ServiceLocator.bleUseCases) }
+                    )
+                    PhotoProjectionScreen(vm, goBack, goScan, character)
+                }
+            }
+        }
+        composable(NavRoute.Marquee.route) { entry ->
+            val accountId = user?.id
+            if (accountId == null) {
+                RouteMessage("Đang tải tài khoản…")
+            } else {
+                val vm: MarqueeViewModel = viewModel(
+                    entry,
+                    key = "marquee:$accountId",
+                    factory = factory {
+                        MarqueeViewModel(ServiceLocator.bleUseCases, TextProfileStore(context, accountId))
+                    }
+                )
+                MirageMarqueeScreen(vm, goBack)
+            }
+        }
+        composable(NavRoute.Control.route) { entry ->
+            val accountId = user?.id
+            if (accountId == null) {
+                RouteMessage("Đang tải tài khoản…")
+            } else {
+                MirageControlScreen(
+                    vm = control,
+                    back = goBack,
+                    scanner = goScan,
+                    openPanelControl = { panelId -> navController.navigate(NavRoute.PanelControl.create(panelId)) },
+                    userId = accountId
+                )
+            }
+        }
+        composable(NavRoute.PanelControl.route) { entry ->
+            val id = entry.arguments?.getString("id")
+            PanelControlScreen(control, id, goBack, goScan)
+        }
+    }
+}
+
+@Composable
+private fun HomeRoute(
+    navController: NavHostController,
+    control: ControlViewModel,
+    scanner: ScanViewModel,
+    user: User?,
+    initialTab: Int,
+    onLogout: () -> Unit
+) {
+    val controlState by control.uiState.collectAsState()
+    val connected = controlState.connectionState is ConnectionState.Connected
+
+    MirageHomeScreen(
+        control = control,
+        scanner = scanner,
+        user = user,
+        openScan = { navController.navigate(NavRoute.Scan.route) },
+        openControl = {
+            if (connected) {
+                navController.navigate(NavRoute.PanelControl.create("current"))
+            } else {
+                navController.navigate(NavRoute.Control.route)
+            }
+        },
+        openCanvas = { navController.navigate(NavRoute.Studio.create(it)) },
+        openMarquee = { navController.navigate(NavRoute.Marquee.route) },
+        openUpload = { navController.navigate(NavRoute.Photo.route) },
+        logout = onLogout,
+        openEffect = { navController.navigate(NavRoute.Effect.route) },
+        openCharacter = { navController.navigate(NavRoute.Character.create(it)) },
+        openDeviceManager = { navController.navigate(NavRoute.Control.route) },
+        initialTab = initialTab
+    )
+}
+
+@Composable
+private fun RouteMessage(text: String) {
+    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        Text(text)
     }
 }

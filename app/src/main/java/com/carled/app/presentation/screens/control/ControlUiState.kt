@@ -10,8 +10,7 @@ data class ControlUiState(
     val ledState: LedControlState = LedControlState(),
     val isLoading: Boolean = false,
     val feedbackMessage: String? = null,
-    /** Trạng thái định kỳ nhận từ ESP32 telemetry */
     val telemetryStatus: DeviceTelemetryStatus? = null,
-    /** Event gần nhất nhận từ ESP32 (để hiển thị toast/banner ngắn gọn) */
     val lastEvent: TelemetryEvent? = null
+
 )
