@@ -120,20 +120,6 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                 MirageMarqueeScreen(vm, goBack)
             }
         }
-        composable(NavRoute.Control.route) { entry ->
-            val accountId = user?.id
-            if (accountId == null) {
-                RouteMessage("Đang tải tài khoản…")
-            } else {
-                MirageControlScreen(
-                    vm = control,
-                    back = goBack,
-                    scanner = goScan,
-                    openPanelControl = { panelId -> navController.navigate(NavRoute.PanelControl.create(panelId)) },
-                    userId = accountId
-                )
-            }
-        }
         composable(NavRoute.PanelControl.route) { entry ->
             val id = entry.arguments?.getString("id")
             PanelControlScreen(control, id, goBack, goScan)
@@ -171,7 +157,6 @@ private fun HomeRoute(
         logout = onLogout,
         openEffect = { navController.navigate(NavRoute.Effect.route) },
         openCharacter = { navController.navigate(NavRoute.Character.create(it)) },
-        openDeviceManager = { navController.navigate(NavRoute.Control.route) },
         initialTab = initialTab
     )
 }

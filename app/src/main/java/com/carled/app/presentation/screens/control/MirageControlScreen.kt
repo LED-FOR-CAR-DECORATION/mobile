@@ -3,12 +3,15 @@ package com.carled.app.presentation.screens.control
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.carled.app.domain.model.*
@@ -26,8 +29,15 @@ fun MirageControlScreen(
     val state by vm.uiState.collectAsState()
     val device = state.connectionState as? ConnectionState.Connected
     val firmware = remember { MockDeviceInventory.firmwareReleases() }
+    var help by remember { mutableStateOf(false) }
 
-    Box(Modifier.fillMaxSize().background(MirageBackground).padding(16.dp)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MirageBackground)
+            .systemBarsPadding()
+            .padding(16.dp)
+    ) {
         WindowFrame(
             title = "Thiết bị của tôi",
             onClose = back,
@@ -54,8 +64,17 @@ fun MirageControlScreen(
                 firmware.forEach { release -> FirmwareReleaseCard(release) }
             }
 
+            GuideRow(text = "Hướng dẫn Bluetooth", onClick = { help = true })
+
             state.feedbackMessage?.let { Text(it, color = MirageMuted, fontSize = 13.sp) }
         }
+
+        if (help) AlertDialog(
+            onDismissRequest = { help = false },
+            title = { Text("Kết nối Bluetooth") },
+            text = { Text("Bật nguồn LED và Bluetooth trên điện thoại. Android 12 trở lên cần quyền Thiết bị ở gần; Android cũ hơn cần quyền Vị trí để quét BLE. Đặt điện thoại gần LED rồi chọn Thêm thiết bị. Điều khiển BLE không cần Internet.") },
+            confirmButton = { TextButton(onClick = { help = false }) { Text("Đã hiểu") } }
+        )
     }
 }
 
@@ -74,7 +93,7 @@ private fun DeviceSection(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(title, color = Cream, fontSize = 18.sp, style = MaterialTheme.typography.titleLarge)
+            Text(title, color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
             if (onAdd != null) {
                 Box(
                     Modifier
@@ -123,11 +142,12 @@ private fun ConnectedPanelCard(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(name, color = Ink, fontSize = 16.sp, style = MaterialTheme.typography.titleMedium)
+            Text(name, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
             Text("Trạng thái: Đã kết nối Bluetooth", color = MirageMuted, fontSize = 13.sp)
             Text("Nguồn: ${if (powerOn) "Bật" else "Tắt"}", color = MirageMuted, fontSize = 13.sp)
             Text("Chế độ: $mode", color = MirageMuted, fontSize = 13.sp)
+            Text("Địa chỉ phần cứng: $address", color = MirageMuted, fontSize = 13.sp)
             Text("Firmware version: Chưa báo cáo", color = MirageMuted, fontSize = 13.sp)
             Text("Nhấn để điều khiển", color = GreenDark, fontSize = 11.sp)
         }
@@ -150,7 +170,7 @@ private fun FirmwareReleaseCard(release: FirmwareRelease) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(release.label, color = Ink, fontSize = 16.sp, style = MaterialTheme.typography.titleMedium)
+            Text(release.label, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
             Text("Compatible for: ${release.compatibility}", color = MirageMuted, fontSize = 13.sp)
             Text("Release date: ${release.releaseDate}", color = MirageMuted, fontSize = 13.sp)
@@ -159,5 +179,23 @@ private fun FirmwareReleaseCard(release: FirmwareRelease) {
             }
         }
         ChevronGlyph()
+    }
+}
+@Composable
+private fun GuideRow(text: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Cream)
+            .border(1.5.dp, Ink, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Default.HelpOutline, contentDescription = null, tint = GreenDark, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, color = GreenDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
     }
 }
