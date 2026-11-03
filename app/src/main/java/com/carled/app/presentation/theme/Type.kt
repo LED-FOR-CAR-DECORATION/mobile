@@ -15,6 +15,17 @@ private val Inter = FontFamily(
     Font(R.font.inter, FontWeight.Bold)
 )
 
+private val smashSans = FontFamily(
+Font(R.font.smashsans, FontWeight.Normal)
+)
+private val smashSansTurbo = FontFamily(
+    Font(R.font.smashsansturbo, FontWeight.Normal)
+)
+private val smashSansMeta = FontFamily(
+    Font(R.font.smashsansmeta, FontWeight.Normal)
+)
+
+
 val Typography = Typography(
     headlineMedium = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp),
     headlineSmall = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Bold, fontSize = 24.sp, lineHeight = 32.sp),

@@ -1,0 +1,45 @@
+<!--
+  ~ Copyright (C) 2026 The Android Open Source Project
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~      http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="13dp"
+    android:height="24dp"
+    android:viewportWidth="13"
+    android:viewportHeight="24">
+  <path
+      android:pathData="M11.44,4.91c0,2.71 -2.095,4.908 -4.68,4.908S2.08,7.62 2.08,4.91 4.175,0 6.76,0s4.68,2.198 4.68,4.91"
+      android:fillColor="#FFFDF7"/>
+  <group>
+    <clip-path
+        android:pathData="M11.44,4.91c0,2.71 -2.095,4.908 -4.68,4.908S2.08,7.62 2.08,4.91 4.175,0 6.76,0s4.68,2.198 4.68,4.91"/>
+    <path
+        android:pathData="M11.44,4.91c0,2.71 -2.095,4.908 -4.68,4.908S2.08,7.62 2.08,4.91 4.175,0 6.76,0s4.68,2.198 4.68,4.91Z"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:strokeColor="#000"/>
+  </group>
+  <path
+      android:pathData="M6.5,10.91c3.59,0 6.5,4.028 6.5,9a11.9,11.9 0,0 1,-0.71 4.09H0.71A11.8,11.8 0,0 1,0 19.91c0,-4.972 2.91,-9 6.5,-9"
+      android:fillColor="#FFFDF7"/>
+  <group>
+    <clip-path
+        android:pathData="M6.5,10.91c3.59,0 6.5,4.028 6.5,9a11.9,11.9 0,0 1,-0.71 4.09H0.71A11.8,11.8 0,0 1,0 19.91c0,-4.972 2.91,-9 6.5,-9"/>
+    <path
+        android:pathData="M6.5,10.91c3.59,0 6.5,4.028 6.5,9a11.9,11.9 0,0 1,-0.71 4.09H0.71A11.8,11.8 0,0 1,0 19.91c0,-4.972 2.91,-9 6.5,-9Z"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:strokeColor="#000"/>
+  </group>
+</vector>

@@ -31,7 +31,7 @@ fun StatusBadge(state: ConnectionState, modifier: Modifier = Modifier) {
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(bgColor)
             .padding(horizontal = 10.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center
