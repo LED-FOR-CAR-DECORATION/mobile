@@ -50,7 +50,6 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
     val alias = device?.deviceName ?: "CarLED-Ambient"
     var draftName by remember { mutableStateOf(alias) }
     val titles = listOf("Trang chủ", "Nội dung LED", "Điều khiển", "Tài khoản")
-    val icons = listOf(Icons.Default.Home, Icons.Default.GridView, Icons.Default.Settings, Icons.Default.PersonOutline)
     Scaffold(topBar = {
         // MirageControlScreen draws its own WindowFrame title/close bar, so skip the app bar there.
         if (tab != HOME_TAB_CONTROL) {
@@ -59,12 +58,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
             })
         }
     }, bottomBar = {
-        NavigationBar(containerColor = Color.White) {
-            listOf("Trang chủ", "Nội dung", "Điều khiển", "Tài khoản").forEachIndexed { index, name ->
-                NavigationBarItem(selected = tab == index, onClick = { tab = index }, icon = { Icon(icons[index], name) }, label = { Text(name) },
-                    colors = NavigationBarItemDefaults.colors(indicatorColor = MirageSage, selectedIconColor = MirageInk))
-            }
-        }
+        HardNavBar(selectedIndex = tab, onTabSelected = { tab = it }, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
     }, containerColor = MirageBackground) { padding ->
         if (tab == HOME_TAB_CONTROL) {
             // Sized to the Scaffold's content area so WindowFrame's internal scroll has bounded height.

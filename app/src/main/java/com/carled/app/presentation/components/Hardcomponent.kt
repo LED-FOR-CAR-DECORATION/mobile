@@ -55,7 +55,7 @@ object HardStyle {
     val Border = 1.5.dp
     val CardOffset = 6.dp
     val SmallOffset = 4.dp
-    val CornerRadius = 6.dp
+    val CornerRadius = 10.dp
 }
 
 fun Modifier.hardSurface(

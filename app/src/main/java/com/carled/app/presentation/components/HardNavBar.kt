@@ -27,8 +27,8 @@ import com.carled.app.presentation.theme.*
 private enum class NavTab(val label: String, @DrawableRes val icon: Int) {
     HOME("Home", R.drawable.ic_home),
     GALLERY("Gallery", R.drawable.ic_gallery),
-    PROFILE("Profile", R.drawable.ic_profile),
-    DEVICES("My Devices", R.drawable.ic_settings)
+    DEVICES("My Devices", R.drawable.ic_settings),
+    PROFILE("Profile", R.drawable.ic_profile)
 }
 
 
@@ -100,7 +100,7 @@ fun HardNavBar(
                         text = tab.label,
                         color = Ink,
                         fontSize = sizing.labelSize,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
