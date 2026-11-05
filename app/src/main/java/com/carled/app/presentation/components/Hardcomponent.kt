@@ -9,11 +9,11 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -63,8 +63,8 @@ fun Modifier.hardSurface(
     offset: Dp = HardStyle.CardOffset
 ): Modifier = this
     .padding(end = offset, bottom = offset)
-    .background(color, RoundedCornerShape(HardStyle.CornerRadius))
-    .border(HardStyle.Border, Ink, RoundedCornerShape(HardStyle.CornerRadius))
+    .background(color)
+    .border(HardStyle.Border, Ink)
 
 @Composable
 fun HardButton(
@@ -75,13 +75,12 @@ fun HardButton(
     loading: Boolean = false,
     filled: Boolean = true,
     textColor: Color = Ink,
-    shadowOffset: Dp = 0.dp
+    shadowOffset: Dp = 0.dp   // pass 0.dp for a flat button
 ) {
     Box(
         modifier = modifier
             .alpha(if (enabled) 1f else 0.5f)
             .hardSurface(color = if (filled) GreenLight else Cream, offset = shadowOffset)
-            .clip(RoundedCornerShape(HardStyle.CornerRadius))
             .clickable(enabled = enabled && !loading, role = Role.Button, onClick = onClick)
             .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center
@@ -115,9 +114,8 @@ fun HardCheckbox(
         Box(
             Modifier
                 .size(14.dp)
-                .clip(RoundedCornerShape(2.dp))
                 .background(if (checked) Green else FieldGrey)
-                .border(1.dp, Ink, RoundedCornerShape(2.dp)),
+                .border(1.dp, Ink),
             contentAlignment = Alignment.Center
         ) {
             if (checked) CheckGlyph()
@@ -147,14 +145,8 @@ fun HardTextField(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(HardStyle.CornerRadius))
                 .background(FieldGrey)
-                .then(
-                    if (error != null)
-                        Modifier.border(1.5.dp, ErrorRed, RoundedCornerShape(HardStyle.CornerRadius))
-                    else
-                        Modifier.border(1.dp, Ink.copy(alpha = 0.2f), RoundedCornerShape(HardStyle.CornerRadius))
-                )
+                .then(if (error != null) Modifier.border(1.5.dp, ErrorRed) else Modifier)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -202,13 +194,13 @@ fun SocialLoginBar(
         Row(Modifier.fillMaxWidth()) {
             LoginWithLabel(Modifier.padding(end = 20.dp))
             Box(
-                Modifier.weight(1f).padding(top = 15.dp, end = 10.dp),
+                Modifier.weight(1f).padding(top = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
                 SocialButtons(
                     providers = providers,
                     size = if (wide) 32.dp else 30.dp,
-                    spacing = if (wide) 20.dp else 10.dp,
+                    spacing = if (wide) 14.dp else 10.dp,
                     enabled = enabled,
                     onProviderClick = onProviderClick
                 )
@@ -258,4 +250,30 @@ private fun LoginWithLabel(modifier: Modifier = Modifier) {
             )
         }
     )
+}
+
+data class HardMenuItem(
+    val label: String,
+    val onClick: (() -> Unit)? = null
+)
+
+@Composable
+fun HardMenuList(items: List<HardMenuItem>, modifier: Modifier = Modifier) {
+    Column(modifier.hardSurface(color = Cream)) {
+        items.forEachIndexed { index, item ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .alpha(if (item.onClick != null) 1f else 0.4f)
+                    .clickable(enabled = item.onClick != null, role = Role.Button, onClick = item.onClick ?: {})
+                    .padding(vertical = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(item.label, color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            }
+            if (index != items.lastIndex) {
+                Box(Modifier.fillMaxWidth().height(1.dp).background(Ink.copy(alpha = 0.15f)))
+            }
+        }
+    }
 }

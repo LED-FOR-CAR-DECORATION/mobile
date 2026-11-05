@@ -51,8 +51,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
     var draftName by remember { mutableStateOf(alias) }
     val titles = listOf("Trang chủ", "Nội dung LED", "Điều khiển", "Tài khoản")
     Scaffold(topBar = {
-        // MirageControlScreen draws its own WindowFrame title/close bar, so skip the app bar there.
-        if (tab != HOME_TAB_CONTROL) {
+        if (tab != HOME_TAB_CONTROL&& tab != HOME_TAB_ACCOUNT) {
             MirageBar(titles[tab], actions = {
                 if (tab == HOME_TAB_HOME) IconButton(onClick = openScan) { Icon(Icons.Default.Add, "Thêm thiết bị") }
             })
@@ -61,7 +60,6 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
         HardNavBar(selectedIndex = tab, onTabSelected = { tab = it }, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
     }, containerColor = MirageBackground) { padding ->
         if (tab == HOME_TAB_CONTROL) {
-            // Sized to the Scaffold's content area so WindowFrame's internal scroll has bounded height.
             Box(Modifier.padding(padding).fillMaxSize()) {
                 MirageControlScreen(
                     vm = control,
@@ -69,6 +67,18 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                     scanner = openScan,
                     openPanelControl = { openControl() },
                     userId = user?.id ?: ""
+                )
+            }
+        } else if (tab == HOME_TAB_ACCOUNT) {
+            Box(Modifier.padding(padding).fillMaxSize()) {
+                MirageProfileScreen(
+                    user = user,
+                    control = control,
+                    back = { tab = HOME_TAB_HOME },
+                    onOpenControlTab = { tab = HOME_TAB_CONTROL },
+                    onOpenPanelControl = { openControl() },
+                    onOpenLibraryTab = { tab = HOME_TAB_LIBRARY },
+                    onLogout = { scanner.disconnectDevice(); logout() }
                 )
             }
         } else {
@@ -91,7 +101,6 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                         state.feedbackMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     }
                     HOME_TAB_LIBRARY -> ContentLibrary(user?.id ?: "", openCanvas, openCharacter)
-                    HOME_TAB_ACCOUNT -> MirageProfileScreen(user) { scanner.disconnectDevice(); logout() }
                 }
             }
         }
