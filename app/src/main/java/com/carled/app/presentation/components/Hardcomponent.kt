@@ -26,13 +26,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.paint
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -51,20 +56,56 @@ import com.carled.app.presentation.theme.GreenDark
 import com.carled.app.presentation.theme.GreenLight
 import com.carled.app.presentation.theme.Ink
 
+data class GalleryThumb(val id: String, val hasContent: Boolean = true)
 object HardStyle {
     val Border = 1.5.dp
-    val CardOffset = 6.dp
-    val SmallOffset = 4.dp
-    val CornerRadius = 10.dp
+    val CardOffset = 8.dp
+    val SmallOffset = 6.dp
+    val CornerRadius = 0.dp
 }
 
 fun Modifier.hardSurface(
     color: Color = Green,
-    offset: Dp = HardStyle.CardOffset
+    offset: Dp = HardStyle.CardOffset,
+    verticalOffset: Dp = offset,
+    borderWidth: Dp = HardStyle.Border,
+    shadowColor: Color = GreenDark
 ): Modifier = this
-    .padding(end = offset, bottom = offset)
+    .drawBehind {
+        drawRect(
+            color = shadowColor,
+            topLeft = Offset(offset.toPx(), verticalOffset.toPx())
+        )
+    }
+    .padding(end = offset, bottom = verticalOffset)
     .background(color)
-    .border(HardStyle.Border, Ink)
+    .border(borderWidth, Ink)
+
+fun Modifier.flatSurface(
+    color: Color = Cream,
+    borderWidth: Dp = HardStyle.Border
+): Modifier = this
+    .background(color)
+    .border(borderWidth, Ink)
+
+@Composable
+fun Modifier.imageSurface(
+    @androidx.annotation.DrawableRes imageRes: Int,
+    offset: Dp = HardStyle.CardOffset,
+    verticalOffset: Dp = offset,
+    borderWidth: Dp = HardStyle.Border,
+    shadowColor: Color = GreenDark
+): Modifier = this
+    .drawBehind {
+        drawRect(
+            color = shadowColor,
+            topLeft = Offset(offset.toPx(), verticalOffset.toPx())
+        )
+    }
+    .padding(end = offset, bottom = verticalOffset)
+    .clipToBounds()
+    .paint(painterResource(imageRes), contentScale = ContentScale.Crop)
+    .border(borderWidth, Ink)
 
 @Composable
 fun HardButton(
@@ -75,7 +116,7 @@ fun HardButton(
     loading: Boolean = false,
     filled: Boolean = true,
     textColor: Color = Ink,
-    shadowOffset: Dp = 0.dp   // pass 0.dp for a flat button
+    shadowOffset: Dp = 0.dp
 ) {
     Box(
         modifier = modifier

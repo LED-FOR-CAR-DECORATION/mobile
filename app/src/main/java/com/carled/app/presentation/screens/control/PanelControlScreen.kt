@@ -14,12 +14,14 @@ import com.carled.app.presentation.components.*
 
 @Composable
 fun PanelControlScreen(vm: ControlViewModel, panelId: String?, back: () -> Unit, scanner: () -> Unit) {
-    val state by vm.uiState.collectAsState()
-    val connected = state.connectionState is ConnectionState.Connected
-    val led = state.ledState
+    val connectionState by vm.connectionState.collectAsState()
+    val ledState by vm.ledState.collectAsState()
+    val feedbackMessage by vm.feedbackMessage.collectAsState()
+    val connected = connectionState is ConnectionState.Connected
+    val led = ledState
     Scaffold(topBar = { MirageBar("Điều khiển LED", back) }, containerColor = MirageBackground) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Text((state.connectionState as? ConnectionState.Connected)?.deviceName ?: "Thiết bị LED", style = MaterialTheme.typography.headlineSmall)
+            Text((connectionState as? ConnectionState.Connected)?.deviceName ?: "Thiết bị LED", style = MaterialTheme.typography.headlineSmall)
             Text(if (connected) "● Đã kết nối Bluetooth" else "Chưa kết nối LED", color = MirageMuted)
             if (!connected) MirageButton("Kết nối LED", scanner, Modifier.fillMaxWidth())
             MirageCard {
@@ -35,7 +37,7 @@ fun PanelControlScreen(vm: ControlViewModel, panelId: String?, back: () -> Unit,
                 Text("Độ sáng đèn · ${(led.brightness * 100f / 255).roundToInt()}%", style = MaterialTheme.typography.titleMedium)
                 Slider(led.brightness * 100f / 255, { vm.setBrightness((it * 255 / 100).roundToInt()) }, valueRange = 0f..100f, enabled = connected, modifier = Modifier.testTag("ledBrightness"))
             }
-            state.feedbackMessage?.let { Text(it, color = MirageMuted) }
+            feedbackMessage?.let { Text(it, color = MirageMuted) }
         }
     }
 }

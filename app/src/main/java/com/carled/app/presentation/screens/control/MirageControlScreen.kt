@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.carled.app.domain.model.*
 import com.carled.app.presentation.components.*
+import com.carled.app.presentation.theme.*
 
 @Composable
 fun MirageControlScreen(
@@ -18,8 +19,10 @@ fun MirageControlScreen(
     openPanelControl: (String) -> Unit = {},
     userId: String = ""
 ) {
-    val state by vm.uiState.collectAsState()
-    val device = state.connectionState as? ConnectionState.Connected
+    val connectionState by vm.connectionState.collectAsState()
+    val ledState by vm.ledState.collectAsState()
+    val feedbackMessage by vm.feedbackMessage.collectAsState()
+    val device = connectionState as? ConnectionState.Connected
     val firmware = remember { MockDeviceInventory.firmwareReleases() }
     var help by remember { mutableStateOf(false) }
 
@@ -28,7 +31,7 @@ fun MirageControlScreen(
             .fillMaxSize()
             .background(MirageBackground)
             .systemBarsPadding()
-            .padding(16.dp)
+            .padding(8.dp)
     ) {
         WindowFrame(
             title = "Thiết bị của tôi",
@@ -38,14 +41,14 @@ fun MirageControlScreen(
             DeviceSection(title = "Owned device:", onAdd = scanner) {
                 if (device == null) {
                     EmptyRow(
-                        if (state.connectionState is ConnectionState.Connecting) "Đang kết nối…"
+                        if (connectionState is ConnectionState.Connecting) "Đang kết nối…"
                         else "Chưa có thiết bị kết nối. Nhấn + để thêm."
                     )
                 } else {
                     ConnectedPanelCard(
                         name = device.deviceName,
-                        powerOn = state.ledState.isPowerOn,
-                        mode = state.ledState.currentMode.displayName,
+                        powerOn = ledState.isPowerOn,
+                        mode = ledState.currentMode.displayName,
                         address = device.deviceAddress,
                         onOpenControl = { openPanelControl("current") }
                     )
@@ -58,7 +61,7 @@ fun MirageControlScreen(
 
             GuideRow(text = "Hướng dẫn Bluetooth", onClick = { help = true })
 
-            state.feedbackMessage?.let { Text(it, color = MirageMuted, fontSize = 13.sp) }
+            feedbackMessage?.let { Text(it, color = MirageMuted, fontSize = 13.sp) }
         }
 
         if (help) AlertDialog(

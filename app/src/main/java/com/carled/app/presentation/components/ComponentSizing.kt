@@ -8,13 +8,13 @@ import androidx.compose.ui.unit.sp
 private val BASE_WIDTH = 280.dp
 
 private object BaseNavBarSizing {
-    val shadowOffset = 8.dp
-    val iconBox = 44.dp
-    val iconSize = 24.dp
-    val labelSize = 8.sp
+    val shadowOffset = 5.dp
+    val iconBox = 32.dp
+    val iconSize = 18.dp
+    val labelSize = 7.sp
     val horizontalPadding = 4.dp
-    val verticalPadding = 6.dp
-    val rowSpacing = 4.dp
+    val verticalPadding = 4.dp
+    val rowSpacing = 2.dp
 }
 
 data class NavBarSizing(
@@ -28,7 +28,7 @@ data class NavBarSizing(
 )
 
 fun sizingFor(availableWidth: Dp): NavBarSizing {
-    val scale = availableWidth / BASE_WIDTH
+    val scale = (availableWidth / BASE_WIDTH).coerceAtMost(1.4f)
     return NavBarSizing(
         shadowOffset = BaseNavBarSizing.shadowOffset * scale,
         iconBox = BaseNavBarSizing.iconBox * scale,

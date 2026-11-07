@@ -16,9 +16,11 @@ import com.carled.app.presentation.screens.canvas.ColorSwatch
 
 @Composable
 fun MirageEffectScreen(vm: ControlViewModel, back: () -> Unit, scanner: () -> Unit) {
-    val state by vm.uiState.collectAsState()
-    val connected = state.connectionState is ConnectionState.Connected
-    val led = state.ledState
+    val connectionState by vm.connectionState.collectAsState()
+    val ledState by vm.ledState.collectAsState()
+    val feedbackMessage by vm.feedbackMessage.collectAsState()
+    val connected = connectionState is ConnectionState.Connected
+    val led = ledState
     val effectModes = listOf(LedMode.STATIC_COLOR, LedMode.BREATHING, LedMode.RAINBOW_WAVE, LedMode.CHASE_FLOW, LedMode.MUSIC_REACTIVE)
     var picker by remember { mutableStateOf(false) }
     var tab by remember { mutableIntStateOf(0) }
@@ -62,7 +64,7 @@ fun MirageEffectScreen(vm: ControlViewModel, back: () -> Unit, scanner: () -> Un
                 Slider(led.sensitivity.toFloat(), { vm.setSensitivity(it.toInt()) }, valueRange = 1f..100f, enabled = connected)
             }
             if (led.currentMode !in effectModes) Text("Chọn màu đơn sắc hoặc một hiệu ứng ở trên để áp dụng lên LED.", color = MirageMuted)
-            state.feedbackMessage?.let { Text(it, color = MirageMuted) }
+            feedbackMessage?.let { Text(it, color = MirageMuted) }
         }
     }
     if (picker) AlertDialog(onDismissRequest = { picker = false }, title = { Text("Chọn màu LED") }, text = {

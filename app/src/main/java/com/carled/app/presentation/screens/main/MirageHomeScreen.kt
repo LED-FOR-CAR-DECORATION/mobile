@@ -1,6 +1,7 @@
 package com.carled.app.presentation.screens.main
 
 
+import android.R.attr.label
 import androidx.compose.foundation.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -45,8 +46,9 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
     val renameScope = rememberCoroutineScope()
     var renaming by remember { mutableStateOf(false) }
     var renameError by remember { mutableStateOf<String?>(null) }
-    val state by control.uiState.collectAsState()
-    val device = state.connectionState as? ConnectionState.Connected
+    val connectionState by control.connectionState.collectAsState()
+    val feedbackMessage by control.feedbackMessage.collectAsState()
+    val device = connectionState as? ConnectionState.Connected
     val alias = device?.deviceName ?: "CarLED-Ambient"
     var draftName by remember { mutableStateOf(alias) }
     val titles = listOf("Trang chủ", "Nội dung LED", "Điều khiển", "Tài khoản")
@@ -57,8 +59,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
             })
         }
     }, bottomBar = {
-        HardNavBar(selectedIndex = tab, onTabSelected = { tab = it }, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-    }, containerColor = MirageBackground) { padding ->
+        HardNavBar(selectedIndex = tab, onTabSelected = { tab = it }, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))    }, containerColor = MirageBackground) { padding ->
         if (tab == HOME_TAB_CONTROL) {
             Box(Modifier.padding(padding).fillMaxSize()) {
                 MirageControlScreen(
@@ -98,7 +99,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                                 CreationFunction("Effect", Icons.Default.AutoAwesome, Color(0xffe9ddfa), openEffect, Modifier.weight(1f))
                             }
                         }
-                        state.feedbackMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        feedbackMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     }
                     HOME_TAB_LIBRARY -> ContentLibrary(user?.id ?: "", openCanvas, openCharacter)
                 }

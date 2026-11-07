@@ -13,6 +13,25 @@ import kotlinx.coroutines.launch
 class ControlViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
     private val _uiState = MutableStateFlow(ControlUiState())
     val uiState = _uiState.asStateFlow()
+
+    // Narrow, change-filtered views for composables that only need part of the state.
+    // telemetryStatus/lastEvent update far more often than anything in the UI renders,
+    // so collecting the full uiState recomposes screens on every tick for no visual gain.
+    // These filter that out: a telemetry-only update leaves connectionState/ledState/
+    // feedbackMessage equal, so distinctUntilChanged() drops it before it reaches Compose.
+    val connectionState: StateFlow<ConnectionState> = _uiState
+        .map { it.connectionState }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, _uiState.value.connectionState)
+    val ledState: StateFlow<LedControlState> = _uiState
+        .map { it.ledState }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, _uiState.value.ledState)
+    val feedbackMessage: StateFlow<String?> = _uiState
+        .map { it.feedbackMessage }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, _uiState.value.feedbackMessage)
+
     private val pending = LatestControls<String, suspend () -> Unit>()
     private val signal = Channel<Unit>(Channel.CONFLATED)
     init {

@@ -1,0 +1,45 @@
+<!--
+  ~ Copyright (C) 2026 The Android Open Source Project
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~      http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="37dp"
+    android:viewportWidth="22"
+    android:viewportHeight="37">
+  <path
+      android:pathData="M19.36,7.568c0,4.18 -3.546,7.568 -7.92,7.568s-7.92,-3.388 -7.92,-7.568S7.065,0 11.44,0c4.374,0 7.92,3.388 7.92,7.568"
+      android:fillColor="#FFFDF7"/>
+  <group>
+    <clip-path
+        android:pathData="M19.36,7.568c0,4.18 -3.546,7.568 -7.92,7.568s-7.92,-3.388 -7.92,-7.568S7.065,0 11.44,0c4.374,0 7.92,3.388 7.92,7.568"/>
+    <path
+        android:pathData="M19.36,7.568c0,4.18 -3.546,7.568 -7.92,7.568s-7.92,-3.388 -7.92,-7.568S7.065,0 11.44,0c4.374,0 7.92,3.388 7.92,7.568Z"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:strokeColor="#000"/>
+  </group>
+  <path
+      android:pathData="M11,16.818c6.075,0 11,6.212 11,13.875 0,2.272 -0.436,4.415 -1.203,6.307H1.203A16.8,16.8 0,0 1,0 30.693c0,-7.663 4.925,-13.875 11,-13.875"
+      android:fillColor="#FFFDF7"/>
+  <group>
+    <clip-path
+        android:pathData="M11,16.818c6.075,0 11,6.212 11,13.875 0,2.272 -0.436,4.415 -1.203,6.307H1.203A16.8,16.8 0,0 1,0 30.693c0,-7.663 4.925,-13.875 11,-13.875"/>
+    <path
+        android:pathData="M11,16.818c6.075,0 11,6.212 11,13.875 0,2.272 -0.436,4.415 -1.203,6.307H1.203A16.8,16.8 0,0 1,0 30.693c0,-7.663 4.925,-13.875 11,-13.875Z"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:strokeColor="#000"/>
+  </group>
+</vector>
