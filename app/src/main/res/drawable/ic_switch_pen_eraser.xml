@@ -1,0 +1,45 @@
+<!--
+  ~ Copyright (C) 2026 The Android Open Source Project
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~      http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp"
+    android:height="32dp"
+    android:viewportWidth="30"
+    android:viewportHeight="32">
+  <path
+      android:strokeWidth="1"
+      android:pathData="m21.367,14.354 l4.961,4.96a1.5,1.5 0,0 1,0 2.122l-9.21,9.21a1.5,1.5 0,0 1,-2.122 0l-4.96,-4.96a1.5,1.5 0,0 1,0 -2.122l9.21,-9.21a1.5,1.5 0,0 1,2.121 0Z"
+      android:fillColor="#D9D9D9"
+      android:strokeColor="#000"/>
+  <path
+      android:pathData="m12.116,21.181 l7.438,7.438"
+      android:strokeWidth=".5"
+      android:fillColor="#00000000"
+      android:strokeColor="#000"/>
+  <group>
+    <clip-path
+        android:pathData="M0.682,0h17v17h-17z"/>
+    <path
+        android:strokeWidth="1"
+        android:pathData="m2.099,1.417 l10.27,2.479 1.063,5.312L9.89,12.75l-5.312,-1.063zM2.099,1.417L7.472,6.79m1.71,6.668L14.14,8.5l2.125,2.125 -4.958,4.958zM9.89,7.792a1.417,1.417 0,1 1,-2.833 0,1.417 1.417,0 0,1 2.833,0"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:strokeColor="#1E1E1E"
+        android:strokeLineCap="round"/>
+  </group>
+  <path
+      android:pathData="M3.682,27h-0.5v0.5h0.5zM8.682,27v-0.5h-5v1h5zM3.682,27h0.5L4.182,15h-1v12zM4.035,14.646a0.5,0.5 0,0 0,-0.707 0L0.146,17.828a0.5,0.5 0,1 0,0.707 0.707l2.829,-2.828 2.828,2.828a0.5,0.5 0,1 0,0.707 -0.707zM25.682,5h0.5v-0.5h-0.5zM16.682,5v0.5h9v-1h-9zM25.682,5h-0.5v9h1L26.182,5zM25.328,14.354a0.5,0.5 0,0 0,0.707 0l3.182,-3.182a0.5,0.5 0,0 0,-0.707 -0.708l-2.828,2.829 -2.829,-2.828a0.5,0.5 0,1 0,-0.707 0.707z"
+      android:fillColor="#000"/>
+</vector>
