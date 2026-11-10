@@ -61,6 +61,13 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.kotlinx.coroutines.android)
 
+    // Networking & Serialization
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+    implementation(libs.gson)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
