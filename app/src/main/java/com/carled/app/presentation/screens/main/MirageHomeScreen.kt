@@ -1,33 +1,66 @@
 package com.carled.app.presentation.screens.main
 
-import androidx.compose.foundation.*
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.CancellationException
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.carled.app.R
-import com.carled.app.domain.model.*
-import com.carled.app.presentation.components.*
+import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.User
+import com.carled.app.domain.model.isValidDeviceName
+import com.carled.app.presentation.components.ChevronGlyph
+import com.carled.app.presentation.components.DeviceSection
+import com.carled.app.presentation.components.EmptyRow
+import com.carled.app.presentation.components.HardNavBar
+import com.carled.app.presentation.components.MirageBackground
+import com.carled.app.presentation.components.MirageBar
+import com.carled.app.presentation.components.MirageMuted
+import com.carled.app.presentation.components.WindowFrame
+import com.carled.app.presentation.components.flatSurface
+import com.carled.app.presentation.screens.control.ControlViewModel
+import com.carled.app.presentation.screens.control.MirageControlScreen
+import com.carled.app.presentation.screens.profile.MirageProfileScreen
+import com.carled.app.presentation.screens.scan.ScanViewModel
 import com.carled.app.presentation.theme.Cream
 import com.carled.app.presentation.theme.Green
 import com.carled.app.presentation.theme.Ink
-import com.carled.app.presentation.screens.control.ControlViewModel
-import com.carled.app.presentation.screens.control.MirageControlScreen
-import com.carled.app.presentation.screens.scan.ScanViewModel
-import com.carled.app.presentation.screens.profile.MirageProfileScreen
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 const val HOME_TAB_HOME = 0
 const val HOME_TAB_LIBRARY = 1
@@ -75,18 +108,22 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                 val profiles = remember(user) { MockLetterProfileStore.listSaved(user?.id ?: "") }
                 Box(Modifier.padding(padding).fillMaxSize().padding(8.dp)) {
                     WindowFrame(title = "Home", modifier = Modifier.fillMaxSize()) {
-                        // Welcome back — reuses DeviceSection for the card shell and
-                        // PersonGlyph for the avatar; everything else is plain Row/Column.
+                        // Welcome back — ic_user remains 24.dp as requested
                         DeviceSection(title = "Welcome back, ${user?.id ?: "Username"}!") {
                             Row(
                                 Modifier.fillMaxWidth().flatSurface(color = Cream).padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
-                                    Modifier.size(48.dp).clip(CircleShape).background(Green)
-                                        .border(HardStyle.Border, Ink, CircleShape),
+                                    Modifier.size(48.dp).clip(CircleShape).background(Green),
                                     contentAlignment = Alignment.Center
-                                ) { PersonGlyph(size = 26.dp) }
+                                ) {
+                                    Image(
+                                        painter = painterResource(R.drawable.ic_user),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(user?.id ?: "Username", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
@@ -104,16 +141,15 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                             }
                         }
 
-                        // Quick start — two rows built from the same flatSurface + ChevronGlyph
-                        // shell ConnectedPanelCard/FirmwareReleaseCard already use.
+                        // Quick start — icons scaled up to 48.dp (2x bigger)
                         DeviceSection(title = "Quick start") {
                             Row(
                                 Modifier.fillMaxWidth().flatSurface(color = Cream)
                                     .clickable(onClick = openUpload).padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(Modifier.size(44.dp).background(Ink, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                                    Image(painterResource(R.drawable.ic_image_upload), contentDescription = null, modifier = Modifier.size(24.dp))
+                                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                                    Image(painterResource(R.drawable.ic_image_upload), contentDescription = null, modifier = Modifier.size(48.dp))
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Text("Project image from your personal collection.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -124,8 +160,8 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                                     .clickable(onClick = openScan).padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(Modifier.size(44.dp).background(Ink, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                                    Image(painterResource(R.drawable.ic_qrcode), contentDescription = null, modifier = Modifier.size(24.dp))
+                                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                                    Image(painterResource(R.drawable.ic_qrcode), contentDescription = null, modifier = Modifier.size(48.dp))
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Text("Bind new device with account with QRcode.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -133,7 +169,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                             }
                         }
 
-                        // Saved letter profile — same row shell again; EmptyRow is reused as-is for the empty state.
+                        // Saved letter profile — icon scaled up to 48.dp (2x bigger)
                         DeviceSection(title = "Saved letter profile  ${profiles.size}/${MockLetterProfileStore.CAPACITY}") {
                             if (profiles.isEmpty()) {
                                 EmptyRow("Chưa có bản lưu nào.")
@@ -144,8 +180,12 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                                             .clickable { openLetterProfile(profile.id) }.padding(12.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Box(Modifier.size(44.dp).background(Color.Black, RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
-                                            Text(profile.preview, color = Green, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                        Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                                            Image(
+                                                painter = painterResource(R.drawable.ic_pixel_perfect_abc),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(48.dp)
+                                            )
                                         }
                                         Spacer(Modifier.width(12.dp))
                                         Text(profile.name, color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))

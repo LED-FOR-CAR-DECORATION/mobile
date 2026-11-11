@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -58,18 +60,23 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.carled.app.domain.model.MarqueeLayout
 import com.carled.app.domain.model.MirrorMode
 import com.carled.app.domain.model.PixelDocument
 import com.carled.app.domain.model.PixelFont
 import com.carled.app.domain.model.PixelText
+import com.carled.app.domain.model.PixelShape
+import com.carled.app.domain.model.PixelTool
 import com.carled.app.presentation.components.MirageBackground
 import com.carled.app.presentation.components.MirageBar
 import com.carled.app.presentation.components.MirageButton
@@ -80,11 +87,6 @@ import com.carled.app.presentation.components.MirageSage
 import java.util.UUID
 import kotlin.math.roundToInt
 
-/**
- * Small sheet for options that don't have a dedicated sidebar icon: grid visibility,
- * mirror mode, and outline-vs-filled for the current shape. Opened via the sidebar's
- * settings (ic_settings) icon.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CanvasOptionsSheet(state: StudioState, vm: StudioViewModel, close: () -> Unit) {
@@ -193,6 +195,8 @@ fun PixelTextDialog(doc: PixelDocument, color: Int, vm: StudioViewModel, close: 
     var textColor by remember { mutableIntStateOf(initial?.color ?: color) }
     var customColor by remember { mutableStateOf(false) }
     var delete by remember { mutableStateOf(false) }
+
+    var scrollMode by remember { mutableStateOf("scroll_left") }
     val block = PixelText(selected ?: "new", text, x, y, font.first, font.second, textColor)
     val valid = PixelFont.fits(block, doc.width, doc.height)
     val supported = PixelFont.supports(text)
@@ -217,7 +221,7 @@ fun PixelTextDialog(doc: PixelDocument, color: Int, vm: StudioViewModel, close: 
                 .testTag("pixelTextScreen"),
             containerColor = MirageBackground,
             topBar = {
-                MirageBar("Chèn chữ Pixel", close) {
+                MirageBar("Chèn chữ & Marquee", close) {
                     TextButton(
                         enabled = selected != null,
                         onClick = { delete = true }) {
@@ -271,12 +275,18 @@ fun PixelTextDialog(doc: PixelDocument, color: Int, vm: StudioViewModel, close: 
                     style = MaterialTheme.typography.bodySmall,
                     color = MirageMuted
                 )
-                MirageCard(color = MirageSage.copy(alpha = .12f)) {
-                    Text(
-                        "Chữ là một khối riêng nằm trên lớp pixel. Bút và Tẩy không làm thay đổi khối chữ.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+
+                MirageCard {
+                    Text("Mẫu câu xe hơi nhanh", style = MaterialTheme.typography.titleSmall)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    val presets = listOf("XIN CAM ON", "XE TAP LAI", "GIU KHOANG CACH", "XIN NHUONG DUONG")
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        presets.forEach { preset ->
+                            ChoiceTile(preset, text == preset) { text = preset }
+                        }
+                    }
                 }
+
                 Row(
                     Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -294,7 +304,7 @@ fun PixelTextDialog(doc: PixelDocument, color: Int, vm: StudioViewModel, close: 
                 MirageCard {
                     Text("Nội dung chữ", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Chỉ hỗ trợ ASCII / Tiếng Việt không dấu",
+                        "Hỗ trợ ASCII / Tiếng Việt không dấu",
                         style = MaterialTheme.typography.bodySmall,
                         color = MirageMuted
                     )
@@ -320,6 +330,14 @@ fun PixelTextDialog(doc: PixelDocument, color: Int, vm: StudioViewModel, close: 
                         "Khối chữ vượt khổ ${doc.width}×${doc.height}. Hãy giảm cỡ font hoặc rút ngắn nội dung.",
                         color = MaterialTheme.colorScheme.error
                     )
+
+                    Text("Kiểu hiệu ứng Marquee", style = MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("scroll_left" to "Cuộn trái", "static" to "Đứng yên", "blink" to "Nhấp nháy").forEach { (m, lbl) ->
+                            ChoiceTile(lbl, scrollMode == m, Modifier.weight(1f)) { scrollMode = m }
+                        }
+                    }
+
                     Text("Kích thước font Bitmap", style = MaterialTheme.typography.titleSmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(3 to 5, 5 to 7, 7 to 9).forEach { size ->
@@ -411,11 +429,6 @@ fun PixelTextDialog(doc: PixelDocument, color: Int, vm: StudioViewModel, close: 
                         }
                     }
                 }
-                Text(
-                    "Xuất hoặc gửi lên LED sẽ tự động gộp chữ vào ma trận; bản gốc vẫn giữ lớp chữ để chỉnh sửa.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MirageMuted
-                )
             }
         }
         if (delete) AlertDialog(
@@ -455,6 +468,20 @@ private fun MatrixObjectPreview(
     val pixels = remember(doc) { doc.composite() }
     val currentBlock by rememberUpdatedState(block)
     val move by rememberUpdatedState(onMove)
+
+    val bitmap = remember(doc.width, doc.height) {
+        android.graphics.Bitmap.createBitmap(doc.width, doc.height, android.graphics.Bitmap.Config.ARGB_8888)
+    }
+    remember(pixels, doc.width, doc.height) {
+        val argbPixels = IntArray(pixels.size) { i ->
+            val c = pixels[i]
+            if (c == 0) 0xff182127.toInt() else c
+        }
+        bitmap.setPixels(argbPixels, 0, doc.width, 0, 0, doc.width, doc.height)
+        true
+    }
+    val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
+
     Canvas(
         Modifier
             .fillMaxWidth()
@@ -483,14 +510,12 @@ private fun MatrixObjectPreview(
                     }
                 })
             }) {
-        val cell = size.width / doc.width
-        pixels.forEachIndexed { index, c ->
-            drawRect(
-                if (c == 0) Color(0xff182127) else Color(c),
-                Offset(index % doc.width * cell + .5f, index / doc.width * cell + .5f),
-                Size((cell - 1f).coerceAtLeast(1f), (cell - 1f).coerceAtLeast(1f))
-            )
-        }
+        drawImage(
+            image = imageBitmap,
+            dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+            filterQuality = androidx.compose.ui.graphics.FilterQuality.None
+        )
+
         if (mirror == MirrorMode.HORIZONTAL || mirror == MirrorMode.BOTH) drawLine(
             MirageSage,
             Offset(size.width / 2, 0f),
@@ -503,6 +528,8 @@ private fun MatrixObjectPreview(
             Offset(size.width, size.height / 2),
             2f
         )
+
+        val cell = size.width / doc.width
         block?.let { b ->
             val left = b.x * cell
             val top = b.y * cell

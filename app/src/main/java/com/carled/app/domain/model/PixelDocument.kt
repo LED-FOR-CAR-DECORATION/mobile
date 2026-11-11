@@ -1,15 +1,31 @@
 package com.carled.app.domain.model
 
-import kotlin.math.*
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.roundToInt
+import kotlin.math.sin
 
 enum class PixelTool { PEN, ERASER, PICKER, FILL, SHAPE, TEXT, SELECT, MOVE }
 enum class MirrorMode { NONE, HORIZONTAL, VERTICAL, BOTH }
 enum class PixelShape { LINE, RECTANGLE, ELLIPSE, STAR }
-data class PixelText(val id: String, val text: String, val x: Int, val y: Int,
-                     val glyphWidth: Int = 3, val glyphHeight: Int = 5, val color: Int = 0xff89c89b.toInt())
+
+data class PixelText(
+    val id: String,
+    val text: String,
+    val x: Int,
+    val y: Int,
+    val glyphWidth: Int = 3,
+    val glyphHeight: Int = 5,
+    val color: Int = 0xff89c89b.toInt()
+)
 
 data class PixelDocument(
-    val width: Int, val height: Int,
+    val width: Int,
+    val height: Int,
     val pixels: List<Int> = List(width * height) { 0 },
     val texts: List<PixelText> = emptyList()
 ) {
@@ -17,20 +33,43 @@ data class PixelDocument(
         require((width to height) in sizes)
         require(pixels.size == width * height)
     }
-    companion object { val sizes = listOf(32 to 32, 64 to 32, 64 to 64) }
 
-    fun brush(x0: Int, y0: Int, x1: Int, y1: Int, color: Int, size: Int, mirror: MirrorMode): PixelDocument {
+    companion object {
+        val sizes = listOf(32 to 32, 64 to 32, 64 to 64)
+    }
+
+    fun brush(
+        x0: Int,
+        y0: Int,
+        x1: Int,
+        y1: Int,
+        color: Int,
+        size: Int,
+        mirror: MirrorMode
+    ): PixelDocument {
         require(size in 1..12)
         val out = pixels.toMutableList()
-        fun put(x: Int, y: Int) { if (x in 0 until width && y in 0 until height) out[y * width + x] = color }
+        val halfSize = (size - 1) / 2
+
+        fun put(x: Int, y: Int) {
+            if (x in 0 until width && y in 0 until height) {
+                out[y * width + x] = color
+            }
+        }
+
+        val mirrorH = mirror == MirrorMode.HORIZONTAL || mirror == MirrorMode.BOTH
+        val mirrorV = mirror == MirrorMode.VERTICAL || mirror == MirrorMode.BOTH
+
         for ((x, y) in line(x0, y0, x1, y1)) {
-            for (dy in 0 until size) for (dx in 0 until size) {
-                val px = x + dx - (size - 1) / 2
-                val py = y + dy - (size - 1) / 2
-                put(px, py)
-                if (mirror == MirrorMode.HORIZONTAL || mirror == MirrorMode.BOTH) put(width - 1 - px, py)
-                if (mirror == MirrorMode.VERTICAL || mirror == MirrorMode.BOTH) put(px, height - 1 - py)
-                if (mirror == MirrorMode.BOTH) put(width - 1 - px, height - 1 - py)
+            for (dy in 0 until size) {
+                for (dx in 0 until size) {
+                    val px = x + dx - halfSize
+                    val py = y + dy - halfSize
+                    put(px, py)
+                    if (mirrorH) put(width - 1 - px, py)
+                    if (mirrorV) put(px, height - 1 - py)
+                    if (mirror == MirrorMode.BOTH) put(width - 1 - px, height - 1 - py)
+                }
             }
         }
         return copy(pixels = out)
@@ -40,66 +79,135 @@ data class PixelDocument(
         if (x !in 0 until width || y !in 0 until height) return this
         val target = pixels[y * width + x]
         if (target == color) return this
+
         val out = pixels.toMutableList()
         val queue = ArrayDeque<Int>()
+
         fun visit(px: Int, py: Int) {
-            if (px in 0 until width && py in 0 until height && out[py * width + px] == target) {
-                out[py * width + px] = color; queue.addLast(py * width + px)
+            if (px in 0 until width && py in 0 until height) {
+                val idx = py * width + px
+                if (out[idx] == target) {
+                    out[idx] = color
+                    queue.addLast(idx)
+                }
             }
         }
+
         visit(x, y)
         while (queue.isNotEmpty()) {
-            val i = queue.removeFirst(); val px = i % width; val py = i / width
-            visit(px - 1, py); visit(px + 1, py); visit(px, py - 1); visit(px, py + 1)
+            val i = queue.removeFirst()
+            val px = i % width
+            val py = i / width
+            visit(px - 1, py)
+            visit(px + 1, py)
+            visit(px, py - 1)
+            visit(px, py + 1)
         }
         return copy(pixels = out)
     }
 
-    fun shape(x0: Int, y0: Int, x1: Int, y1: Int, color: Int, kind: PixelShape, filled: Boolean, mirror: MirrorMode): PixelDocument {
+    fun shape(
+        x0: Int,
+        y0: Int,
+        x1: Int,
+        y1: Int,
+        color: Int,
+        kind: PixelShape,
+        filled: Boolean,
+        mirror: MirrorMode
+    ): PixelDocument {
         val out = pixels.toMutableList()
-        val left = min(x0, x1); val right = max(x0, x1)
-        val top = min(y0, y1); val bottom = max(y0, y1)
-        fun set(x: Int, y: Int) { if (x in 0 until width && y in 0 until height) out[y * width + x] = color }
+        val left = min(x0, x1)
+        val right = max(x0, x1)
+        val top = min(y0, y1)
+        val bottom = max(y0, y1)
+
+        fun set(x: Int, y: Int) {
+            if (x in 0 until width && y in 0 until height) {
+                out[y * width + x] = color
+            }
+        }
+
+        val mirrorH = mirror == MirrorMode.HORIZONTAL || mirror == MirrorMode.BOTH
+        val mirrorV = mirror == MirrorMode.VERTICAL || mirror == MirrorMode.BOTH
+
         fun put(x: Int, y: Int) {
             set(x, y)
-            if (mirror == MirrorMode.HORIZONTAL || mirror == MirrorMode.BOTH) set(width - 1 - x, y)
-            if (mirror == MirrorMode.VERTICAL || mirror == MirrorMode.BOTH) set(x, height - 1 - y)
+            if (mirrorH) set(width - 1 - x, y)
+            if (mirrorV) set(x, height - 1 - y)
             if (mirror == MirrorMode.BOTH) set(width - 1 - x, height - 1 - y)
         }
+
         when (kind) {
             PixelShape.LINE -> return brush(x0, y0, x1, y1, color, 1, mirror)
             PixelShape.RECTANGLE -> {
-                for (y in top..bottom) for (x in left..right)
-                    if (filled || x == left || x == right || y == top || y == bottom) put(x, y)
+                for (y in top..bottom) {
+                    for (x in left..right) {
+                        if (filled || x == left || x == right || y == top || y == bottom) {
+                            put(x, y)
+                        }
+                    }
+                }
             }
             PixelShape.ELLIPSE -> {
-                val rx = (right - left) / 2.0; val ry = (bottom - top) / 2.0
+                val rx = (right - left) / 2.0
+                val ry = (bottom - top) / 2.0
                 if (rx == 0.0 || ry == 0.0) return brush(x0, y0, x1, y1, color, 1, mirror)
-                val cx = (left + right) / 2.0; val cy = (top + bottom) / 2.0
-                if (filled) for (y in top..bottom) for (x in left..right) {
-                    if (((x - cx) / (rx + .3)).pow(2) + ((y - cy) / (ry + .3)).pow(2) <= 1.0) put(x, y)
+                val cx = (left + right) / 2.0
+                val cy = (top + bottom) / 2.0
+
+                if (filled) {
+                    val rxOffset = rx + 0.3
+                    val ryOffset = ry + 0.3
+                    for (y in top..bottom) {
+                        for (x in left..right) {
+                            if (((x - cx) / rxOffset).pow(2) + ((y - cy) / ryOffset).pow(2) <= 1.0) {
+                                put(x, y)
+                            }
+                        }
+                    }
                 } else {
                     val steps = (max(rx, ry) * 16).toInt().coerceAtLeast(24)
-                    for (i in 0..steps) { val a = i * 2 * PI / steps; put((cx + rx * cos(a)).roundToInt(), (cy + ry * sin(a)).roundToInt()) }
+                    for (i in 0..steps) {
+                        val a = i * 2 * PI / steps
+                        put(
+                            (cx + rx * cos(a)).roundToInt(),
+                            (cy + ry * sin(a)).roundToInt()
+                        )
+                    }
                 }
             }
             PixelShape.STAR -> {
-                val cx = (left + right) / 2.0; val cy = (top + bottom) / 2.0
+                val cx = (left + right) / 2.0
+                val cy = (top + bottom) / 2.0
                 val outerR = max(1.0, min(right - left, bottom - top) / 2.0)
                 if (right == left || bottom == top) return brush(x0, y0, x1, y1, color, 1, mirror)
                 val innerR = outerR * 0.42
-                // 5-point star, 10 alternating outer/inner vertices, point facing up.
+
                 val vertices = (0 until 10).map { i ->
                     val r = if (i % 2 == 0) outerR else innerR
                     val a = -PI / 2 + i * PI / 5
                     cx + r * cos(a) to cy + r * sin(a)
                 }
+
                 if (filled) {
-                    for (y in top..bottom) for (x in left..right) if (insidePolygon(x + 0.5, y + 0.5, vertices)) put(x, y)
+                    for (y in top..bottom) {
+                        for (x in left..right) {
+                            if (insidePolygon(x + 0.5, y + 0.5, vertices)) {
+                                put(x, y)
+                            }
+                        }
+                    }
                 } else {
                     for (i in vertices.indices) {
-                        val (ax, ay) = vertices[i]; val (bx, by) = vertices[(i + 1) % vertices.size]
-                        line(ax.roundToInt(), ay.roundToInt(), bx.roundToInt(), by.roundToInt()).forEach { (px, py) -> put(px, py) }
+                        val (ax, ay) = vertices[i]
+                        val (bx, by) = vertices[(i + 1) % vertices.size]
+                        line(
+                            ax.roundToInt(),
+                            ay.roundToInt(),
+                            bx.roundToInt(),
+                            by.roundToInt()
+                        ).forEach { (px, py) -> put(px, py) }
                     }
                 }
             }
@@ -112,10 +220,15 @@ data class PixelDocument(
         texts.forEach { block ->
             block.text.forEachIndexed { index, char ->
                 val glyph = PixelFont.glyph(char)
-                for (y in 0 until block.glyphHeight) for (x in 0 until block.glyphWidth) {
-                    if (glyph[y * 5 / block.glyphHeight][x * 3 / block.glyphWidth] == '1') {
-                        val px = block.x + index * (block.glyphWidth + 1) + x; val py = block.y + y
-                        if (px in 0 until width && py in 0 until height) out[py * width + px] = block.color
+                for (y in 0 until block.glyphHeight) {
+                    for (x in 0 until block.glyphWidth) {
+                        if (glyph[y * 5 / block.glyphHeight][x * 3 / block.glyphWidth] == '1') {
+                            val px = block.x + index * (block.glyphWidth + 1) + x
+                            val py = block.y + y
+                            if (px in 0 until width && py in 0 until height) {
+                                out[py * width + px] = block.color
+                            }
+                        }
                     }
                 }
             }
@@ -124,59 +237,101 @@ data class PixelDocument(
     }
 
     fun rgb565(): ByteArray = composite().flatMap { pixel ->
-        val value = (((pixel ushr 19) and 31) shl 11) or (((pixel ushr 10) and 63) shl 5) or ((pixel ushr 3) and 31)
+        val value = (((pixel ushr 19) and 31) shl 11) or
+                (((pixel ushr 10) and 63) shl 5) or
+                ((pixel ushr 3) and 31)
         listOf((value and 255).toByte(), (value ushr 8).toByte())
     }.toByteArray()
 
     private fun line(x0: Int, y0: Int, x1: Int, y1: Int): List<Pair<Int, Int>> {
-        var x = x0; var y = y0; val dx = abs(x1 - x0); val dy = -abs(y1 - y0)
-        val sx = if (x0 < x1) 1 else -1; val sy = if (y0 < y1) 1 else -1; var error = dx + dy
+        var x = x0
+        var y = y0
+        val dx = abs(x1 - x0)
+        val dy = -abs(y1 - y0)
+        val sx = if (x0 < x1) 1 else -1
+        val sy = if (y0 < y1) 1 else -1
+        var error = dx + dy
         val points = mutableListOf<Pair<Int, Int>>()
-        while (true) { points.add(x to y); if (x == x1 && y == y1) break
-            val e = error * 2; if (e >= dy) { error += dy; x += sx }; if (e <= dx) { error += dx; y += sy }
+        while (true) {
+            points.add(x to y)
+            if (x == x1 && y == y1) break
+            val e = error * 2
+            if (e >= dy) {
+                error += dy
+                x += sx
+            }
+            if (e <= dx) {
+                error += dx
+                y += sy
+            }
         }
         return points
     }
 
     private fun insidePolygon(px: Double, py: Double, poly: List<Pair<Double, Double>>): Boolean {
-        var inside = false; var j = poly.size - 1
+        var inside = false
+        var j = poly.size - 1
         for (i in poly.indices) {
-            val (xi, yi) = poly[i]; val (xj, yj) = poly[j]
-            if ((yi > py) != (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) inside = !inside
+            val (xi, yi) = poly[i]
+            val (xj, yj) = poly[j]
+            if ((yi > py) != (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+                inside = !inside
+            }
             j = i
         }
         return inside
     }
 }
 
-
 fun PixelDocument.regionPixels(x0: Int, y0: Int, x1: Int, y1: Int): Pair<Int, List<Int>> {
-    val left = min(x0, x1).coerceIn(0, width - 1); val right = max(x0, x1).coerceIn(0, width - 1)
-    val top = min(y0, y1).coerceIn(0, height - 1); val bottom = max(y0, y1).coerceIn(0, height - 1)
+    val left = min(x0, x1).coerceIn(0, width - 1)
+    val right = max(x0, x1).coerceIn(0, width - 1)
+    val top = min(y0, y1).coerceIn(0, height - 1)
+    val bottom = max(y0, y1).coerceIn(0, height - 1)
     val w = right - left + 1
-    val data = buildList { for (y in top..bottom) for (x in left..right) add(pixels[y * width + x]) }
+    val data = buildList {
+        for (y in top..bottom) {
+            for (x in left..right) {
+                add(pixels[y * width + x])
+            }
+        }
+    }
     return w to data
 }
 
-
 fun PixelDocument.clearRegion(x0: Int, y0: Int, x1: Int, y1: Int): PixelDocument {
-    val left = min(x0, x1); val right = max(x0, x1); val top = min(y0, y1); val bottom = max(y0, y1)
+    val left = min(x0, x1)
+    val right = max(x0, x1)
+    val top = min(y0, y1)
+    val bottom = max(y0, y1)
     val out = pixels.toMutableList()
-    for (y in top..bottom) for (x in left..right) if (x in 0 until width && y in 0 until height) out[y * width + x] = 0
-    return copy(pixels = out)
-}
-
-
-fun PixelDocument.stampRegion(originX: Int, originY: Int, regionWidth: Int, data: List<Int>): PixelDocument {
-    if (regionWidth <= 0) return this
-    val out = pixels.toMutableList()
-    data.forEachIndexed { i, value ->
-        val x = originX + i % regionWidth; val y = originY + i / regionWidth
-        if (x in 0 until width && y in 0 until height) out[y * width + x] = value
+    for (y in top..bottom) {
+        for (x in left..right) {
+            if (x in 0 until width && y in 0 until height) {
+                out[y * width + x] = 0
+            }
+        }
     }
     return copy(pixels = out)
 }
 
+fun PixelDocument.stampRegion(
+    originX: Int,
+    originY: Int,
+    regionWidth: Int,
+    data: List<Int>
+): PixelDocument {
+    if (regionWidth <= 0) return this
+    val out = pixels.toMutableList()
+    data.forEachIndexed { i, value ->
+        val x = originX + i % regionWidth
+        val y = originY + i / regionWidth
+        if (x in 0 until width && y in 0 until height) {
+            out[y * width + x] = value
+        }
+    }
+    return copy(pixels = out)
+}
 
 object PixelFont {
     private val alphabet = mapOf(
@@ -205,8 +360,15 @@ object PixelFont {
         '~' to "000/011/110/000/000", '`' to "100/010/000/000/000", '{' to "011/010/110/010/011",
         '}' to "110/010/011/010/110"
     )
-    fun supports(text: String) = text.all { it.code in 32..126 && alphabet.containsKey(it.uppercaseChar()) }
+
+    fun supports(text: String) =
+        text.all { it.code in 32..126 && alphabet.containsKey(it.uppercaseChar()) }
+
     fun glyph(char: Char) = (alphabet[char.uppercaseChar()] ?: alphabet.getValue('?')).split('/')
-    fun fits(block: PixelText, width: Int, height: Int): Boolean = block.text.isNotBlank() && supports(block.text) &&
-            block.x >= 0 && block.y >= 0 && block.x + block.text.length * (block.glyphWidth + 1) - 1 <= width && block.y + block.glyphHeight <= height
+
+    fun fits(block: PixelText, width: Int, height: Int): Boolean =
+        block.text.isNotBlank() && supports(block.text) &&
+                block.x >= 0 && block.y >= 0 &&
+                block.x + block.text.length * (block.glyphWidth + 1) - 1 < width &&
+                block.y + block.glyphHeight <= height
 }

@@ -23,16 +23,19 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -41,7 +44,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,16 +57,23 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.carled.app.domain.model.MirrorMode
 import com.carled.app.domain.model.PixelDocument
 import com.carled.app.domain.model.PixelTool
@@ -75,6 +84,9 @@ import com.carled.app.presentation.components.MirageInk
 import com.carled.app.presentation.components.MirageMuted
 import com.carled.app.presentation.components.MirageSage
 import com.carled.app.presentation.components.miragePanel
+import com.carled.app.presentation.theme.Cream
+import com.carled.app.presentation.theme.Green
+import com.carled.app.presentation.theme.Ink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -151,12 +163,33 @@ fun StudioScreen(
     Scaffold(
         containerColor = MirageBackground,
         bottomBar = {
-            if (doc != null) CanvasBottomBar(
-                state = state,
-                vm = viewModel,
-                onImport = { if (!state.sending && !imageBusy) selectImage() },
-                onBack = ::back
-            )
+            if (doc != null) Column {
+                CanvasBottomBar(
+                    state = state,
+                    vm = viewModel,
+                    onImport = { if (!state.sending && !imageBusy) selectImage() },
+                    onBack = ::back
+                )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(MirageBackground)
+                        .border(width = 1.dp, color = MirageInk.copy(alpha = .15f))
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${doc.width} × ${doc.height}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MirageInk,
+                        modifier = Modifier
+                            .border(1.dp, MirageInk, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                    BasicTextFieldFilename(state.name, viewModel::name)
+                }
+            }
         }
     ) { padding ->
         if (doc == null) {
@@ -219,133 +252,76 @@ fun StudioScreen(
                 )
             }
         } else {
-            Row(Modifier
-                .padding(padding)
-                .fillMaxSize()) {
-                CanvasSidebar(
-                    state = state, vm = viewModel,
-                    onMenu = { showMenu = true },
-                    onOptions = { panel = "options" },
-                    onColor = { panel = "colors" },
-                    onText = { panel = "text" }
-                )
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .verticalScroll(rememberScrollState())
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    if (doc.width == 64 && doc.height == 32) MirageCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    if (state.sending) "LIVE · Tạm dừng để lưu" else if (!state.connected) "LIVE · Chờ kết nối LED" else if (!state.liveEnabled) "LIVE · Đã tắt" else if (state.syncing) "LIVE · Đang đồng bộ…" else "LIVE · Đang bật",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                Text(
-                                    "Nét vẽ gửi trực tiếp. Chọn Lưu lên thiết bị LED để giữ lại sau khi tắt nguồn.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MirageMuted
-                                )
-                            }
-                            Switch(
-                                state.liveEnabled,
-                                viewModel::live,
-                                enabled = !state.sending,
-                                modifier = Modifier.testTag("liveToggle")
+            Column(
+                Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .background(Ink)
+            ) {
+                LiveEditorTitleBar(syncing = state.syncing, onClose = ::back)
+                Row(Modifier.fillMaxSize()) {
+                    CanvasSidebar(
+                        state = state, vm = viewModel,
+                        onMenu = { showMenu = true },
+                        onOptions = { panel = "options" },
+                        onColor = { panel = "colors" },
+                        onText = { panel = "text" }
+                    )
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState())
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)
+                    ) {
+                        InteractiveGrid(state, viewModel)
+
+                        if (state.tool == PixelTool.PICKER) Text(
+                            "Chạm pixel để lấy màu. Chọn Bút để hủy.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MirageMuted
+                        )
+                        if (state.tool == PixelTool.SELECT) Text(
+                            "Kéo để chọn vùng, dùng Cắt/Sao chép rồi chuyển sang Di chuyển.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MirageMuted
+                        )
+                        if (state.tool == PixelTool.MOVE && state.selection == null) Text(
+                            "Chọn một vùng trước khi di chuyển.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MirageMuted
+                        )
+                        if (state.mirror != MirrorMode.NONE) Text(
+                            "Đối xứng: ${mirrorLabel(state.mirror)}",
+                            color = MirageMuted,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        if (!state.connected) Text(
+                            "Bạn vẫn có thể vẽ và lưu vào Gallery. Kết nối LED để bật LIVE và lưu lên thiết bị.",
+                            color = MirageMuted,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        if (doc.width != 64 || doc.height != 32) Text(
+                            "Thiết kế này chỉ lưu nháp: giao thức hiện tại chỉ gửi được 64×32.",
+                            color = MirageMuted,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+
+                        if (imageBusy) Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                Modifier.size(18.dp)
+                            ); Spacer(Modifier.width(8.dp)); Text("Đang đọc ảnh…")
+                        }
+                        imageError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        state.feedback?.let {
+                            Text(
+                                it,
+                                Modifier
+                                    .miragePanel(MirageSage.copy(alpha = .15f))
+                                    .padding(12.dp)
                             )
                         }
-                        state.liveError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                    }
-
-                    InteractiveGrid(state, viewModel)
-
-
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, MirageInk, RoundedCornerShape(8.dp))
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "${doc.width} × ${doc.height}",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MirageInk
-                        )
-                        BasicTextFieldFilename(state.name, viewModel::name)
-                    }
-
-                    if (state.tool == PixelTool.PICKER) Text(
-                        "Chạm pixel để lấy màu. Chọn Bút để hủy.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MirageMuted
-                    )
-                    if (state.tool == PixelTool.SELECT) Text(
-                        "Kéo để chọn vùng, dùng Cắt/Sao chép rồi chuyển sang Di chuyển.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MirageMuted
-                    )
-                    if (state.tool == PixelTool.MOVE && state.selection == null) Text(
-                        "Chọn một vùng trước khi di chuyển.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MirageMuted
-                    )
-                    if (state.mirror != MirrorMode.NONE) Text(
-                        "Đối xứng: ${mirrorLabel(state.mirror)}",
-                        color = MirageMuted,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    if (!state.connected) Text(
-                        "Bạn vẫn có thể vẽ và lưu vào Gallery. Kết nối LED để bật LIVE và lưu lên thiết bị.",
-                        color = MirageMuted,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    if (doc.width != 64 || doc.height != 32) Text(
-                        "Thiết kế này chỉ lưu nháp: giao thức hiện tại chỉ gửi được 64×32.",
-                        color = MirageMuted,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-
-                    if (imageBusy) Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(
-                            Modifier.size(18.dp)
-                        ); Spacer(Modifier.width(8.dp)); Text("Đang đọc ảnh…")
-                    }
-                    imageError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                    state.feedback?.let {
-                        Text(
-                            it,
-                            Modifier
-                                .miragePanel(MirageSage.copy(alpha = .15f))
-                                .padding(12.dp)
-                        )
-                    }
-
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        MirageButton(
-                            if (state.sending) "Đang lưu lên LED…" else "Lưu lên thiết bị LED",
-                            viewModel::send,
-                            Modifier
-                                .weight(1f)
-                                .testTag("saveToLed"),
-                            enabled = state.connected && !state.sending && doc.width == 64 && doc.height == 32
-                        )
-                        MirageButton(
-                            "Lưu vào Gallery",
-                            viewModel::save,
-                            Modifier
-                                .weight(1f)
-                                .testTag("saveToGallery"),
-                            enabled = !state.sending,
-                            secondary = true
-                        )
                     }
                 }
             }
@@ -363,7 +339,14 @@ fun StudioScreen(
         },
         dismissButton = { TextButton(onClick = { leave = false }) { Text("Tiếp tục vẽ") } })
 
-    if (showMenu) NavMenuSheet(onHome = onBack, onProfile = onProfile, close = { showMenu = false })
+    if (showMenu) NavMenuSheet(
+        state = state,
+        onSendToLed = viewModel::send,
+        onSaveToGallery = viewModel::save,
+        onHome = onBack,
+        onProfile = onProfile,
+        close = { showMenu = false }
+    )
 
     if (doc != null) when (panel) {
         "colors" -> PaletteDialog(state, viewModel) { panel = null }
@@ -383,6 +366,55 @@ fun StudioScreen(
 
 private fun mirrorLabel(m: MirrorMode) = when (m) {
     MirrorMode.NONE -> "Tắt"; MirrorMode.HORIZONTAL -> "Trái–phải"; MirrorMode.VERTICAL -> "Trên–dưới"; MirrorMode.BOTH -> "Cả hai trục"
+}
+
+@Composable
+private fun LiveEditorTitleBar(syncing: Boolean, onClose: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .background(Cream)
+            .border(2.dp, Ink),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .padding(start = 10.dp)
+                .size(16.dp)
+                .clip(CircleShape)
+                .background(Green)
+                .border(1.5.dp, Ink, CircleShape)
+        )
+        Text(
+            "Live editor",
+            color = Ink,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .padding(start = 8.dp)
+                .weight(1f)
+        )
+        Icon(
+            Icons.Default.Sync,
+            contentDescription = if (syncing) "Đang đồng bộ" else null,
+            tint = Green.copy(alpha = if (syncing) 1f else 0.4f),
+            modifier = Modifier
+                .padding(end = 10.dp)
+                .size(18.dp)
+        )
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .width(48.dp)
+                .background(Green)
+                .border(1.5.dp, Ink)
+                .clickable(onClick = onClose),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("X", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        }
+    }
 }
 
 @Composable
@@ -422,6 +454,27 @@ private fun InteractiveGrid(state: StudioState, vm: StudioViewModel) {
     val pixels = remember(doc) { doc.composite() }
     var zoom by remember(doc.width, doc.height) { mutableFloatStateOf(1f) }
     var pan by remember(doc.width, doc.height) { mutableStateOf(Offset.Zero) }
+
+    val bitmap = remember(doc.width, doc.height) {
+        android.graphics.Bitmap.createBitmap(doc.width, doc.height, android.graphics.Bitmap.Config.ARGB_8888)
+    }
+
+    remember(pixels, doc.width, doc.height) {
+        val argbPixels = IntArray(pixels.size) { i ->
+            val p = pixels[i]
+            if (p == 0) {
+                val x = i % doc.width
+                val y = i / doc.width
+                if ((x + y) % 2 == 0) 0xff24372b.toInt() else 0xff2d4435.toInt()
+            } else {
+                p
+            }
+        }
+        bitmap.setPixels(argbPixels, 0, doc.width, 0, 0, doc.width, doc.height)
+        true
+    }
+    val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Canvas(
             Modifier
@@ -473,19 +526,25 @@ private fun InteractiveGrid(state: StudioState, vm: StudioViewModel) {
                     }
                 }) {
             val cell = size.width / doc.width * zoom
-            for (y in 0 until doc.height) for (x in 0 until doc.width) {
-                val p = pixels[y * doc.width + x]
-                val pos = Offset(pan.x + x * cell, pan.y + y * cell)
-                val emptyColor = if ((x + y) % 2 == 0) Color(0xff24372b) else Color(0xff2d4435)
-                drawRect(if (p == 0) emptyColor else Color(p), pos, Size(cell, cell))
-                // Built-in pixel grid, always visible when enabled (on by default).
-                if (state.grid && cell >= 3) drawRect(
-                    Color(0xff56655b),
-                    pos,
-                    Size(cell, cell),
-                    style = Stroke(.5f)
-                )
+
+            drawImage(
+                image = imageBitmap,
+                dstOffset = IntOffset(pan.x.toInt(), pan.y.toInt()),
+                dstSize = IntSize((doc.width * cell).toInt(), (doc.height * cell).toInt()),
+                filterQuality = FilterQuality.None
+            )
+            if (state.grid && cell >= 3) {
+                val gridColor = Color(0xff56655b)
+                for (x in 0..doc.width) {
+                    val xPos = pan.x + x * cell
+                    drawLine(gridColor, Offset(xPos, pan.y), Offset(xPos, pan.y + doc.height * cell), strokeWidth = 0.5f)
+                }
+                for (y in 0..doc.height) {
+                    val yPos = pan.y + y * cell
+                    drawLine(gridColor, Offset(pan.x, yPos), Offset(pan.x + doc.width * cell, yPos), strokeWidth = 0.5f)
+                }
             }
+
             if (state.mirror == MirrorMode.HORIZONTAL || state.mirror == MirrorMode.BOTH) drawLine(
                 MirageSage,
                 Offset(pan.x + doc.width * cell / 2, 0f),
@@ -506,7 +565,6 @@ private fun InteractiveGrid(state: StudioState, vm: StudioViewModel) {
                     style = Stroke(2f)
                 )
             }
-            // Marquee selection used by Select/Move/Cut/Copy.
             state.selection?.let { sel ->
                 val left = pan.x + sel.left * cell
                 val top = pan.y + sel.top * cell

@@ -40,7 +40,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.util.UUID
 
-/** A marquee selection in document pixel coordinates. Not persisted — lives only in UI state. */
 data class SelectionRect(val x0: Int, val y0: Int, val x1: Int, val y1: Int) {
     val left get() = minOf(x0, x1)
     val right get() = maxOf(x0, x1)
@@ -68,7 +67,6 @@ data class StudioState(
     val liveEnabled: Boolean = true,
     val syncing: Boolean = false,
     val liveError: String? = null,
-    // New: marquee selection + clipboard (Select/Move/Cut/Copy/Paste) and a brightness-style "opacity" for drawing.
     val selection: SelectionRect? = null,
     val hasClipboard: Boolean = false,
     val opacity: Int = 100
@@ -88,6 +86,7 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
     private val undo = ArrayDeque<PixelDocument>()
     private val redo = ArrayDeque<PixelDocument>()
     private var strokeStart: PixelDocument? = null
+    private var moveOriginalDoc: PixelDocument? = null
     private var start: Pair<Int, Int>? = null
     private var previous: Pair<Int, Int>? = null
     private var saved: PixelDocument? = null
@@ -126,18 +125,16 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
                 try {
                     while (true) {
                         val more = writes.withLock {
-                            val state = _state.value
-                            val document = state.document
-                            if (!state.liveEnabled || !state.connected || state.sending || document == null || document.width != 64 || document.height != 32) {
-                                _state.update { it.copy(syncing = false) }; return@withLock false
-                            }
                             val epoch = generation
-                            if (wire == null) {
+                            val state = _state.value
+                            val document = state.document ?: return@withLock false
+                            val totalPixels = document.width * document.height
+                            if (wire == null || wire?.size != totalPixels) {
                                 _state.update { it.copy(syncing = true) }
                                 ble.clearCanvas()
                                 delay(40)
                                 if (epoch != generation) return@withLock false
-                                wire = IntArray(2048)
+                                wire = IntArray(totalPixels)
                                 resumeAfterSave = false
                             }
                             val current = requireNotNull(wire)
@@ -145,26 +142,19 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
                             val indices = target.indices.filter { target[it] != current[it] }
                                 .take(BleProtocolHelper.MAX_DRAW_POINTS)
                             if (indices.isEmpty()) {
-                                _state.update { it.copy(syncing = false) }; return@withLock false
+                                _state.update { it.copy(syncing = false) }
+                                return@withLock false
                             }
-                            if (resumeAfterSave) {
-                                // Firmware resets an uploaded image on the first live pixel.
-                                // Re-enter live mode explicitly, then replay the entire latest canvas.
-                                ble.clearCanvas()
-                                delay(40)
-                                if (epoch != generation) return@withLock false
-                                wire = IntArray(2048); resumeAfterSave = false
-                                return@withLock true
-                            }
+
                             _state.update { it.copy(syncing = true) }
                             ble.sendBatchDraw(indices.map { index ->
                                 val pixel = target[index]
                                 TouchPoint(
-                                    index % 64,
-                                    index / 64,
-                                    (pixel ushr 16) and 255,
-                                    (pixel ushr 8) and 255,
-                                    pixel and 255
+                                    x = index % document.width,
+                                    y = index / document.width,
+                                    r = (pixel ushr 16) and 255,
+                                    g = (pixel ushr 8) and 255,
+                                    b = pixel and 255
                                 )
                             })
                             if (epoch != generation) return@withLock false
@@ -229,7 +219,14 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
     }
 
     fun togglePenEraser() {
-        _state.update { it.copy(tool = if (it.tool == PixelTool.ERASER) PixelTool.PEN else PixelTool.ERASER) }
+        _state.update {
+            it.copy(
+                tool = when (it.tool) {
+                    PixelTool.PEN -> PixelTool.ERASER
+                    else -> PixelTool.PEN
+                }
+            )
+        }
     }
 
     fun cycleRectShape() {
@@ -342,16 +339,35 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
             return
         }
         if (s.tool == PixelTool.MOVE) {
-            val sel = s.selection ?: return
-            if (x in sel.left..sel.right && y in sel.top..sel.bottom) {
-                strokeStart = d
-                val (w, data) = d.regionPixels(sel.left, sel.top, sel.right, sel.bottom)
-                val h = if (w > 0) data.size / w else 0
-                floating = Triple(w, h, data)
-                floatingAt = sel.left to sel.top
-                start = x to y; previous = x to y
-                show(d.clearRegion(sel.left, sel.top, sel.right, sel.bottom))
+            val left: Int
+            val top: Int
+            val right: Int
+            val bottom: Int
+            val sel = s.selection
+            if (sel != null) {
+                if (x !in sel.left..sel.right || y !in sel.top..sel.bottom) return
+                left = sel.left
+                top = sel.top
+                right = sel.right
+                bottom = sel.bottom
+            } else {
+                left = 0
+                top = 0
+                right = d.width - 1
+                bottom = d.height - 1
             }
+
+            moveOriginalDoc = d
+            val cleared = d.clearRegion(left, top, right, bottom)
+            strokeStart = cleared
+
+            val (w, data) = d.regionPixels(left, top, right, bottom)
+            val h = if (w > 0) data.size / w else 0
+            floating = Triple(w, h, data)
+            floatingAt = left to top
+            start = x to y; previous = x to y
+
+            show(cleared.stampRegion(left, top, w, data))
             return
         }
         if (x !in 0 until d.width || y !in 0 until d.height) return
@@ -386,7 +402,9 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
             val nx = origin.first + (x - anchor.first)
             val ny = origin.second + (y - anchor.second)
             show(base.stampRegion(nx, ny, w, data))
-            _state.update { it.copy(selection = SelectionRect(nx, ny, nx + w - 1, ny + h - 1)) }
+            if (s.selection != null) {
+                _state.update { it.copy(selection = SelectionRect(nx, ny, nx + w - 1, ny + h - 1)) }
+            }
             return
         }
         val base = strokeStart ?: return
@@ -428,7 +446,7 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
     fun end(cancel: Boolean = false) {
         val s = _state.value
         if (s.sending) {
-            strokeStart = null; start = null; previous = null; floating = null; floatingAt =
+            strokeStart = null; moveOriginalDoc = null; start = null; previous = null; floating = null; floatingAt =
                 null; return
         }
         if (s.tool == PixelTool.SELECT) {
@@ -441,13 +459,19 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
             start = null; previous = null; return
         }
         if (s.tool == PixelTool.MOVE) {
-            strokeStart?.let { before ->
-                if (cancel) show(before)
-                else if (_state.value.document != before) {
-                    history(before); show(_state.value.document!!)
+            if (cancel) {
+                moveOriginalDoc?.let { show(it) }
+            } else {
+                _state.value.document?.let { current ->
+                    moveOriginalDoc?.let { before ->
+                        if (current != before) {
+                            history(before)
+                            show(current)
+                        }
+                    }
                 }
             }
-            strokeStart = null; start = null; previous = null; floating = null; floatingAt = null
+            strokeStart = null; moveOriginalDoc = null; start = null; previous = null; floating = null; floatingAt = null
             return
         }
         strokeStart?.let { before ->
@@ -576,8 +600,11 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
         if (!s.connected) {
             feedback("Kết nối thiết bị trước khi gửi."); return
         }
-        if (d.width != 64 || d.height != 32) {
-            feedback("Giao thức LED hiện tại chỉ nhận 64×32. Hãy lưu bản nháp để giữ nguyên kích thước."); return
+        val isValidSize = (d.width == 32 && d.height == 32) ||
+                (d.width == 64 && d.height == 32) ||
+                (d.width == 64 && d.height == 64)
+        if (!isValidSize) {
+            feedback("Giao thức LED hiện tại chỉ hỗ trợ 32×32, 64×32 và 64×64."); return
         }
         _state.update { it.copy(sending = true, feedback = "Đang lưu vào bộ nhớ LED…") }
         viewModelScope.launch {
@@ -610,7 +637,7 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                feedback("Không gửi được: ${e.message}")
+                feedback("Not sent: ${e.message}")
             } finally {
                 _state.update { it.copy(sending = false) }; changed.trySend(Unit)
             }

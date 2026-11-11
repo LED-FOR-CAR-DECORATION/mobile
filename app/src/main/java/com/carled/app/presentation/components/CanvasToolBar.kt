@@ -30,7 +30,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,10 +50,11 @@ import com.carled.app.R
 import com.carled.app.domain.model.PixelShape
 import com.carled.app.domain.model.PixelTool
 import com.carled.app.presentation.components.MirageBackground
+import com.carled.app.presentation.components.MirageButton
 import com.carled.app.presentation.components.MirageCard
 import com.carled.app.presentation.components.MirageInk
-import com.carled.app.presentation.components.MirageMuted
 import com.carled.app.presentation.components.MirageSage
+import com.carled.app.presentation.theme.FieldGrey
 import kotlin.math.roundToInt
 
 
@@ -68,11 +68,14 @@ fun CanvasSidebar(
     onText: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val sideButtonSize = 52.dp
+    val sideIconSize = 40.dp
+
     Column(
         modifier = modifier
             .fillMaxHeight()
             .width(56.dp)
-            .background(MirageBackground)
+            .background(FieldGrey) // Uses FieldGrey from theme
             .verticalScroll(rememberScrollState())
             .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -89,33 +92,45 @@ fun CanvasSidebar(
         SidebarAssetButton(
             R.drawable.ic_eyedropper,
             "Hút màu",
-            state.tool == PixelTool.PICKER
+            state.tool == PixelTool.PICKER,
+            size = sideButtonSize,
+            iconSize = sideIconSize
         ) { vm.tool(PixelTool.PICKER) }
         SidebarAssetButton(
             R.drawable.ic_pixel_perfect_abc,
             "Chèn chữ",
-            state.tool == PixelTool.TEXT
+            state.tool == PixelTool.TEXT,
+            size = sideButtonSize,
+            iconSize = sideIconSize
         ) { vm.tool(PixelTool.TEXT); onText() }
         SidebarAssetButton(
             R.drawable.ic_switch_pen_eraser,
             if (state.tool == PixelTool.ERASER) "Tẩy" else "Bút",
-            state.tool == PixelTool.PEN || state.tool == PixelTool.ERASER
+            state.tool == PixelTool.PEN || state.tool == PixelTool.ERASER,
+            size = sideButtonSize,
+            iconSize = sideIconSize
         ) { vm.togglePenEraser() }
         SidebarAssetButton(
             R.drawable.ic_move,
             "Di chuyển",
             state.tool == PixelTool.MOVE,
-            enabled = state.selection != null
+            enabled = true,
+            size = sideButtonSize,
+            iconSize = sideIconSize
         ) { vm.tool(PixelTool.MOVE) }
         SidebarAssetButton(
             R.drawable.ic_paint_bucket,
             "Đổ màu",
-            state.tool == PixelTool.FILL
+            state.tool == PixelTool.FILL,
+            size = sideButtonSize,
+            iconSize = sideIconSize
         ) { vm.tool(PixelTool.FILL) }
         SidebarAssetButton(
             R.drawable.ic_line,
             "Đường thẳng",
-            state.tool == PixelTool.SHAPE && state.shape == PixelShape.LINE
+            state.tool == PixelTool.SHAPE && state.shape == PixelShape.LINE,
+            size = sideButtonSize,
+            iconSize = sideIconSize
         ) { vm.shape(PixelShape.LINE, false) }
         SidebarAssetButton(
             R.drawable.ic_square,
@@ -123,12 +138,16 @@ fun CanvasSidebar(
             state.tool == PixelTool.SHAPE && state.shape in listOf(
                 PixelShape.RECTANGLE,
                 PixelShape.ELLIPSE
-            )
+            ),
+            size = sideButtonSize,
+            iconSize = sideIconSize
         ) { vm.cycleRectShape() }
         SidebarAssetButton(
             R.drawable.ic_star,
             "Ngôi sao",
-            state.tool == PixelTool.SHAPE && state.shape == PixelShape.STAR
+            state.tool == PixelTool.SHAPE && state.shape == PixelShape.STAR,
+            size = sideButtonSize,
+            iconSize = sideIconSize
         ) { vm.shape(PixelShape.STAR, true) }
 
         HorizontalDivider(Modifier.width(36.dp), color = MirageInk.copy(alpha = .15f))
@@ -146,16 +165,18 @@ fun CanvasSidebar(
         )
 
         HorizontalDivider(Modifier.width(36.dp), color = MirageInk.copy(alpha = .15f))
-        SidebarAssetButton(R.drawable.ic_settings, "Tùy chọn canvas", false, onClick = onOptions)
+        SidebarAssetButton(
+            R.drawable.ic_settings,
+            "Tùy chọn canvas",
+            false,
+            size = sideButtonSize,
+            iconSize = sideIconSize,
+            onClick = onOptions
+        )
         Spacer(Modifier.height(8.dp))
     }
 }
 
-/**
- * Bottom bar, matching the mockup's two clusters: edit history + selection tools on the left
- * (Undo, Redo, Opacity, Select, Cut, Copy), file actions on the right (Import, Save, back to
- * design list). Buttons here are rendered larger than the sidebar's, same square aspect ratio.
- */
 @Composable
 fun CanvasBottomBar(
     state: StudioState,
@@ -173,7 +194,7 @@ fun CanvasBottomBar(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .background(MirageBackground)
+                    .background(FieldGrey) // Uses FieldGrey from theme
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -183,7 +204,7 @@ fun CanvasBottomBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MirageBackground)
+                .background(FieldGrey) // Uses FieldGrey from theme
                 .border(width = 1.dp, color = MirageInk.copy(alpha = .15f))
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.Center,
@@ -211,8 +232,8 @@ fun CanvasBottomBar(
                 R.drawable.ic_opacity,
                 "Độ đậm màu",
                 showOpacity,
-                size = buttonSize,
-                iconSize = iconSize
+                size = 56.dp,
+                iconSize = 56.dp
             ) { showOpacity = !showOpacity }
             Spacer(Modifier.width(10.dp))
             SidebarAssetButton(
@@ -309,7 +330,7 @@ private fun SidebarAssetButton(
             Icon(
                 painter = painterResource(id = iconRes),
                 contentDescription = label,
-                tint = if (enabled) MirageInk else MirageMuted.copy(alpha = .4f),
+                tint = Color.Unspecified,
                 modifier = Modifier.size(iconSize)
             )
         }
@@ -350,16 +371,28 @@ private fun OpacityPopover(value: Int, onChange: (Int) -> Unit) {
             value = value.toFloat(),
             onValueChange = { onChange(it.roundToInt()) },
             valueRange = 10f..100f,
-            modifier = Modifier.width(140.dp)
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NavMenuSheet(onHome: () -> Unit, onProfile: () -> Unit, close: () -> Unit) {
+fun NavMenuSheet(
+    state: StudioState,
+    onSendToLed: () -> Unit,
+    onSaveToGallery: () -> Unit,
+    onHome: () -> Unit,
+    onProfile: () -> Unit,
+    close: () -> Unit
+) {
     ModalBottomSheet(onDismissRequest = close) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -368,16 +401,48 @@ fun NavMenuSheet(onHome: () -> Unit, onProfile: () -> Unit, close: () -> Unit) {
                 Text("Menu", style = MaterialTheme.typography.titleMedium)
                 IconButton(onClick = close) { Icon(Icons.Default.Close, "Đóng") }
             }
-            TextButton(onClick = { close(); onHome() }, modifier = Modifier.fillMaxWidth()) {
-                Icon(painterResource(R.drawable.ic_home), null, Modifier.size(20.dp)); Spacer(
-                Modifier.width(8.dp)
-            ); Text("Về danh sách thiết kế")
-            }
-            TextButton(onClick = { close(); onProfile() }, modifier = Modifier.fillMaxWidth()) {
-                Icon(painterResource(R.drawable.ic_user), null, Modifier.size(20.dp)); Spacer(
-                Modifier.width(8.dp)
-            ); Text("Hồ sơ")
-            }
+
+            val doc = state.document
+            val isValidSize = doc != null && (
+                    (doc.width == 32 && doc.height == 32) ||
+                            (doc.width == 64 && doc.height == 32) ||
+                            (doc.width == 64 && doc.height == 64)
+                    )
+
+            MirageButton(
+                text = if (state.sending) "Đang lưu lên LED…" else "Lưu lên thiết bị LED",
+                onClick = { close(); onSendToLed() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("saveToLedMenu"),
+                enabled = state.connected && !state.sending && isValidSize
+            )
+
+            MirageButton(
+                text = "Lưu vào Gallery",
+                onClick = { close(); onSaveToGallery() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("saveToGalleryMenu"),
+                enabled = !state.sending,
+                secondary = true
+            )
+
+            MirageButton(
+                text = "Về danh sách thiết kế",
+                onClick = { close(); onHome() },
+                modifier = Modifier.fillMaxWidth(),
+                secondary = true
+            )
+
+            MirageButton(
+                text = "Hồ sơ",
+                onClick = { close(); onProfile() },
+                modifier = Modifier.fillMaxWidth(),
+                secondary = true
+            )
+
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
