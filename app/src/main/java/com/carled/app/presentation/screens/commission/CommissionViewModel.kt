@@ -15,8 +15,8 @@ internal enum class CommissionSize(val label: String, val staticPriceVnd: Long) 
 }
 
 internal const val COMMISSION_FRAME_PRICE_VND = 50_000L
-// Mobile projects 64 × 32 RGB565 frames (4 KiB each). Reserve half of the 128 KiB SPIFFS partition.
-internal const val COMMISSION_MAX_FRAMES = 16
+// Mobile projects 64 × 32 RGB565 frames (4 KiB each). Eight frames use 32 KiB before filesystem overhead.
+internal const val COMMISSION_MAX_FRAMES = 8
 
 internal data class MockSePayPayment(
     val transferCode: String,
