@@ -56,7 +56,14 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
         composable(NavRoute.Login.route) { entry ->
             val vm: LoginViewModel = viewModel(
                 entry,
-                factory = factory { LoginViewModel(ServiceLocator.loginUseCase, ServiceLocator.registerUseCase) }
+                factory = factory {
+                    LoginViewModel(
+                        loginUseCase = ServiceLocator.loginUseCase,
+                        registerUseCase = ServiceLocator.registerUseCase,
+                        verifyEmailUseCase = ServiceLocator.verifyEmailUseCase,
+                        resendVerificationUseCase = ServiceLocator.resendVerificationUseCase
+                    )
+                }
             )
             MirageLoginScreen(vm) {
                 navController.navigate(NavRoute.Main.route) {

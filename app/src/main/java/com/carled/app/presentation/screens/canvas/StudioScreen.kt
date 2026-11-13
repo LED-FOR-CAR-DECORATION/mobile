@@ -14,47 +14,16 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,11 +44,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.carled.app.domain.model.MirrorMode
-import com.carled.app.domain.model.PixelDocument
 import com.carled.app.domain.model.PixelTool
 import com.carled.app.presentation.components.MirageBackground
-import com.carled.app.presentation.components.MirageButton
-import com.carled.app.presentation.components.MirageCard
 import com.carled.app.presentation.components.MirageInk
 import com.carled.app.presentation.components.MirageMuted
 import com.carled.app.presentation.components.MirageSage
@@ -93,6 +59,13 @@ import kotlinx.coroutines.withContext
 import kotlin.math.floor
 import kotlin.math.max
 
+fun rasterizeBitmapToPixels(bitmap: Bitmap, targetWidth: Int, targetHeight: Int): List<Int> {
+    val scaled = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+    val pixels = IntArray(targetWidth * targetHeight)
+    scaled.getPixels(pixels, 0, targetWidth, 0, 0, targetWidth, targetHeight)
+    return pixels.map { it }.toList()
+}
+
 @Composable
 fun StudioScreen(
     viewModel: StudioViewModel,
@@ -102,7 +75,6 @@ fun StudioScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val doc = state.document
-    var size by remember { mutableStateOf(64 to 32) }
     var panel by remember { mutableStateOf<String?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     var leave by remember { mutableStateOf(false) }
@@ -110,6 +82,7 @@ fun StudioScreen(
     var imageBusy by remember { mutableStateOf(false) }
     var imageError by remember { mutableStateOf<String?>(null) }
     var initialImport by remember { mutableStateOf(importOnOpen) }
+    var showExportDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val picker =
@@ -192,89 +165,30 @@ fun StudioScreen(
             }
         }
     ) { padding ->
-        if (doc == null) {
-            Column(
-                Modifier
-                    .padding(padding)
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            "Quay lại"
-                        )
-                    }
-                    Text("Bắt đầu từ từng điểm ảnh", style = MaterialTheme.typography.headlineSmall)
-                }
-                Text(
-                    "Chọn độ phân giải cho thiết kế mới. Kích thước được giữ nguyên khi lưu bản nháp.",
-                    color = MirageMuted
+        Column(
+            Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .background(Ink)
+        ) {
+            LiveEditorTitleBar(syncing = state.syncing, onClose = ::back)
+            Row(Modifier.fillMaxSize()) {
+                CanvasSidebar(
+                    state = state, vm = viewModel,
+                    onMenu = { showMenu = true },
+                    onOptions = { panel = "options" },
+                    onColor = { panel = "colors" },
+                    onText = { panel = "text" }
                 )
-                PixelDocument.sizes.forEach { (w, h) ->
-                    MirageCard(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { size = w to h },
-                        if (size == w to h) MirageSage.copy(alpha = .3f) else Color.White
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = size == w to h, onClick = { size = w to h })
-                            Column {
-                                Text(
-                                    "$w × $h",
-                                    style = MaterialTheme.typography.titleLarge
-                                ); Text(
-                                if (w == h) "Canvas vuông" else "Canvas ngang · 2:1",
-                                color = MirageMuted
-                            )
-                            }
-                        }
-                        Box(
-                            Modifier
-                                .fillMaxWidth(.5f)
-                                .aspectRatio(w.toFloat() / h)
-                                .background(MirageSage.copy(alpha = .2f))
-                                .border(1.dp, MirageInk)
-                        )
-                    }
-                }
-                MirageButton(
-                    "Tạo canvas",
-                    { viewModel.create(size.first, size.second) },
-                    Modifier.fillMaxWidth()
-                )
-                Text(
-                    "Kiểm tra tương thích với thiết bị khi gửi. Giao thức hiện tại nhận ảnh 64×32.",
-                    color = MirageMuted
-                )
-            }
-        } else {
-            Column(
-                Modifier
-                    .padding(padding)
-                    .fillMaxSize()
-                    .background(Ink)
-            ) {
-                LiveEditorTitleBar(syncing = state.syncing, onClose = ::back)
-                Row(Modifier.fillMaxSize()) {
-                    CanvasSidebar(
-                        state = state, vm = viewModel,
-                        onMenu = { showMenu = true },
-                        onOptions = { panel = "options" },
-                        onColor = { panel = "colors" },
-                        onText = { panel = "text" }
-                    )
-                    Column(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState())
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)
-                    ) {
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)
+                ) {
+                    if (doc != null) {
                         InteractiveGrid(state, viewModel)
 
                         if (state.tool == PixelTool.PICKER) Text(
@@ -309,24 +223,33 @@ fun StudioScreen(
                         )
 
                         if (imageBusy) Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(
-                                Modifier.size(18.dp)
-                            ); Spacer(Modifier.width(8.dp)); Text("Đang đọc ảnh…")
+                            CircularProgressIndicator(Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp)); Text("Đang đọc ảnh…")
                         }
                         imageError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                         state.feedback?.let {
-                            Text(
-                                it,
-                                Modifier
-                                    .miragePanel(MirageSage.copy(alpha = .15f))
-                                    .padding(12.dp)
-                            )
+                            Text(it, Modifier.miragePanel(MirageSage.copy(alpha = .15f)).padding(12.dp))
+                        }
+                    } else {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(2f)
+                                .border(2.dp, Cream.copy(alpha = .3f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Chọn kích thước canvas để bắt đầu", color = Cream.copy(alpha = .5f))
                         }
                     }
                 }
             }
         }
     }
+
+    if (doc == null) CreateCanvasDialog(
+        onDismiss = onBack,
+        onCreate = { w, h -> viewModel.create(w, h) }
+    )
 
     if (leave) AlertDialog(
         onDismissRequest = { leave = false },
@@ -342,11 +265,26 @@ fun StudioScreen(
     if (showMenu) NavMenuSheet(
         state = state,
         onSendToLed = viewModel::send,
-        onSaveToGallery = viewModel::save,
+        onSaveDraft = viewModel::save,
+        onExportToGallery = { showExportDialog = true },
         onHome = onBack,
         onProfile = onProfile,
         close = { showMenu = false }
     )
+
+    if (showExportDialog && doc != null) {
+        ExportDialog(
+            onDismiss = { showExportDialog = false },
+            onConfirm = { format ->
+                val success = ImageExportHelper.exportDocument(context, doc, state.name, format)
+                if (success) {
+                    viewModel.feedback("Đã xuất ảnh ra thư mục Pictures/CarLED thành công!")
+                } else {
+                    viewModel.feedback("Không thể xuất ảnh.")
+                }
+            }
+        )
+    }
 
     if (doc != null) when (panel) {
         "colors" -> PaletteDialog(state, viewModel) { panel = null }
@@ -356,7 +294,11 @@ fun StudioScreen(
             ImportImageDialog(
                 it,
                 doc,
-                { viewModel.importPixels(it); panel = null },
+                { bmp ->
+                    val rasterizedPixels = rasterizeBitmapToPixels(bmp, doc.width, doc.height)
+                    viewModel.importPixels(rasterizedPixels)
+                    panel = null
+                },
                 { panel = null },
                 ::selectImage
             )
@@ -487,35 +429,33 @@ private fun InteractiveGrid(state: StudioState, vm: StudioViewModel) {
                 .pointerInput(doc.width, doc.height) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false); down.consume()
-                        fun position(point: Offset): Pair<Int, Int> {
-                            val cell = size.width.toFloat() / doc.width * zoom
-                            return floor((point.x - pan.x) / cell).toInt() to floor((point.y - pan.y) / cell).toInt()
+
+                        fun position(point: Offset, currentCellSize: Float): Pair<Int, Int> {
+                            return floor((point.x - pan.x) / currentCellSize).toInt() to floor((point.y - pan.y) / currentCellSize).toInt()
                         }
 
-                        val p = position(down.position); vm.down(p.first, p.second)
+                        val initialCellSize = size.width.toFloat() / doc.width * zoom
+                        val p = position(down.position, initialCellSize)
+                        vm.down(p.first, p.second)
                         var transforming = false
                         try {
                             do {
                                 val event = awaitPointerEvent()
+                                val activeCellSize = size.width.toFloat() / doc.width * zoom
                                 if (event.changes.count { it.pressed } > 1) {
                                     if (!transforming) {
                                         vm.end(cancel = true); transforming = true
                                     }
                                     val center = event.calculateCentroid(useCurrent = false)
                                     val previousZoom = zoom
-                                    zoom = (zoom * event.calculateZoom()).coerceIn(1f, 8f)
-                                    pan =
-                                        center - (center - pan) * (zoom / previousZoom) + event.calculatePan()
-                                    pan = Offset(
-                                        pan.x.coerceIn(size.width * (1 - zoom), 0f),
-                                        pan.y.coerceIn(size.height * (1 - zoom), 0f)
-                                    )
+                                    zoom = (zoom * event.calculateZoom()).coerceIn(0.5f, 16f)
+
+                                    // Allow free panning like Clip Studio without clamping bounds rigidly to edges
+                                    pan = center - (center - pan) * (zoom / previousZoom) + event.calculatePan()
                                 } else if (!transforming) event.changes.firstOrNull()
                                     ?.let { change ->
-                                        val at = position(change.position); vm.move(
-                                        at.first,
-                                        at.second
-                                    )
+                                        val at = position(change.position, activeCellSize)
+                                        vm.move(at.first, at.second)
                                     }
                                 event.changes.forEach { it.consume() }
                             } while (event.changes.any { it.pressed })

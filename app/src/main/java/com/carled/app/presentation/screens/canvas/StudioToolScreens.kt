@@ -70,13 +70,10 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.carled.app.domain.model.MarqueeLayout
 import com.carled.app.domain.model.MirrorMode
 import com.carled.app.domain.model.PixelDocument
 import com.carled.app.domain.model.PixelFont
 import com.carled.app.domain.model.PixelText
-import com.carled.app.domain.model.PixelShape
-import com.carled.app.domain.model.PixelTool
 import com.carled.app.presentation.components.MirageBackground
 import com.carled.app.presentation.components.MirageBar
 import com.carled.app.presentation.components.MirageButton
@@ -551,4 +548,8 @@ private fun MatrixObjectPreview(
             }
         }
     }
+}
+
+private fun Color.luminance(): Float {
+    return 0.299f * red + 0.587f * green + 0.114f * blue
 }

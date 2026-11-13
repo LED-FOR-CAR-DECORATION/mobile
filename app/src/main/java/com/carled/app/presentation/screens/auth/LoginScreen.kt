@@ -73,6 +73,14 @@ fun LoginScreen(
             viewModel.loginWithSocial(provider, onSuccess = onLoginSuccess)
         },
         onClose = { focusManager.clearFocus() },
+        // AuthCodeDialog only ever appears after a successful register() call
+        // (see LoginViewModel.register / LoginUiState.showVerifyDialog).
+        // verifyEmail does not establish a session, so it does not call
+        // onLoginSuccess — the ViewModel drops the user back on the login form.
+        onAuthCodeChange = viewModel::onAuthCodeChange,
+        onResendCode = viewModel::resendVerificationCode,
+        onVerifySubmit = viewModel::submitVerifyEmail,
+        onDismissVerifyDialog = viewModel::dismissVerifyDialog,
         modifier = modifier
     )
 }
@@ -90,6 +98,10 @@ private fun LoginScreenContent(
     onToggleMode: () -> Unit,
     onSocialClick: (String) -> Unit,
     onClose: () -> Unit,
+    onAuthCodeChange: (String) -> Unit,
+    onResendCode: () -> Unit,
+    onVerifySubmit: () -> Unit,
+    onDismissVerifyDialog: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val focusManager = LocalFocusManager.current
@@ -204,6 +216,20 @@ private fun LoginScreenContent(
                 .clickable(onClick = onToggleMode)
         )
     }
+
+    // Shown only after a successful register() (state.showVerifyDialog is
+    // flipped on by LoginViewModel.register, never by the login path).
+    if (state.showVerifyDialog) {
+        AuthCodeDialog(
+            code = state.verificationCode,
+            onCodeChange = onAuthCodeChange,
+            onResend = onResendCode,
+            onSignUp = onVerifySubmit,
+            onDismiss = onDismissVerifyDialog,
+            loading = state.isVerifying,
+            error = state.verifyError
+        )
+    }
 }
 
 @Composable
@@ -227,7 +253,8 @@ private fun LoginScreenPreview() {
         state = LoginUiState(errorMessage = "Wrong email or password"),
         onEmailChange = {}, onPasswordChange = {}, onConfirmPasswordChange = {},
         onRememberMeChange = {}, onAcceptTermsChange = {}, onSubmit = {},
-        onForgotPasswordClick = {}, onToggleMode = {}, onSocialClick = {}, onClose = {}
+        onForgotPasswordClick = {}, onToggleMode = {}, onSocialClick = {}, onClose = {},
+        onAuthCodeChange = {}, onResendCode = {}, onVerifySubmit = {}, onDismissVerifyDialog = {}
     )
 }
 
@@ -238,6 +265,23 @@ private fun RegisterScreenPreview() {
         state = LoginUiState(isRegisterMode = true),
         onEmailChange = {}, onPasswordChange = {}, onConfirmPasswordChange = {},
         onRememberMeChange = {}, onAcceptTermsChange = {}, onSubmit = {},
-        onForgotPasswordClick = {}, onToggleMode = {}, onSocialClick = {}, onClose = {}
+        onForgotPasswordClick = {}, onToggleMode = {}, onSocialClick = {}, onClose = {},
+        onAuthCodeChange = {}, onResendCode = {}, onVerifySubmit = {}, onDismissVerifyDialog = {}
+    )
+}
+
+@Preview(showBackground = true, showSystemUi = true)
+@Composable
+private fun VerifyDialogPreview() {
+    LoginScreenContent(
+        state = LoginUiState(
+            isRegisterMode = true,
+            showVerifyDialog = true,
+            verificationEmail = "demo@carled.vn"
+        ),
+        onEmailChange = {}, onPasswordChange = {}, onConfirmPasswordChange = {},
+        onRememberMeChange = {}, onAcceptTermsChange = {}, onSubmit = {},
+        onForgotPasswordClick = {}, onToggleMode = {}, onSocialClick = {}, onClose = {},
+        onAuthCodeChange = {}, onResendCode = {}, onVerifySubmit = {}, onDismissVerifyDialog = {}
     )
 }

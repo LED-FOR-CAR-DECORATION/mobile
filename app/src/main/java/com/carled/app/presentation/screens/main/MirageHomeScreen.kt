@@ -109,7 +109,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                 Box(Modifier.padding(padding).fillMaxSize().padding(8.dp)) {
                     WindowFrame(title = "Home", modifier = Modifier.fillMaxSize()) {
                         // Welcome back — ic_user remains 24.dp as requested
-                        DeviceSection(title = "Welcome back, ${user?.id ?: "Username"}!") {
+                        DeviceSection(title = "Welcome back, ${user?.fullName ?: "New User"}!") {
                             Row(
                                 Modifier.fillMaxWidth().flatSurface(color = Cream).padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -126,7 +126,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
-                                    Text(user?.id ?: "Username", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                                    Text(user?.fullName ?: "New User", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
                                     if (!user?.email.isNullOrBlank()) {
                                         Text("Email: ${user?.email}", color = MirageMuted, fontSize = 13.sp)
                                     }

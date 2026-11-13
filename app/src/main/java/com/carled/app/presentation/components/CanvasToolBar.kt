@@ -75,7 +75,7 @@ fun CanvasSidebar(
         modifier = modifier
             .fillMaxHeight()
             .width(56.dp)
-            .background(FieldGrey) // Uses FieldGrey from theme
+            .background(FieldGrey)
             .verticalScroll(rememberScrollState())
             .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -194,7 +194,7 @@ fun CanvasBottomBar(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .background(FieldGrey) // Uses FieldGrey from theme
+                    .background(FieldGrey)
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -204,7 +204,7 @@ fun CanvasBottomBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(FieldGrey) // Uses FieldGrey from theme
+                .background(FieldGrey)
                 .border(width = 1.dp, color = MirageInk.copy(alpha = .15f))
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.Center,
@@ -381,7 +381,8 @@ private fun OpacityPopover(value: Int, onChange: (Int) -> Unit) {
 fun NavMenuSheet(
     state: StudioState,
     onSendToLed: () -> Unit,
-    onSaveToGallery: () -> Unit,
+    onSaveDraft: () -> Unit,
+    onExportToGallery: () -> Unit,
     onHome: () -> Unit,
     onProfile: () -> Unit,
     close: () -> Unit
@@ -419,11 +420,21 @@ fun NavMenuSheet(
             )
 
             MirageButton(
-                text = "Lưu vào Gallery",
-                onClick = { close(); onSaveToGallery() },
+                text = "Lưu bản nháp",
+                onClick = { close(); onSaveDraft() },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("saveToGalleryMenu"),
+                    .testTag("saveDraftMenu"),
+                enabled = !state.sending,
+                secondary = true
+            )
+
+            MirageButton(
+                text = "Xuất ảnh ra Gallery (PNG/JPEG)",
+                onClick = { close(); onExportToGallery() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("exportToGalleryMenu"),
                 enabled = !state.sending,
                 secondary = true
             )

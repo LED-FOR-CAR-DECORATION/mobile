@@ -1,82 +1,76 @@
 package com.carled.app.data.remote
 
+import com.carled.app.data.remote.dto.ForgotPasswordRequest
+import com.carled.app.data.remote.dto.GoogleAuthRequest
 import com.carled.app.data.remote.dto.LoginRequest
 import com.carled.app.data.remote.dto.LoginResponse
 import com.carled.app.data.remote.dto.ProductDto
-import com.carled.app.data.remote.dto.UserDto
-import kotlinx.coroutines.delay
+import com.carled.app.data.remote.dto.RefreshTokenRequest
+import com.carled.app.data.remote.dto.RegisterRequest
+import com.carled.app.data.remote.dto.RegisterResponse
+import com.carled.app.data.remote.dto.ResendVerificationRequest
+import com.carled.app.data.remote.dto.ResetPasswordRequest
+import com.carled.app.data.remote.dto.UserProfileResponse
+import com.carled.app.data.remote.dto.VerifyEmailRequest
+import retrofit2.Response
+import retrofit2.http.Body
+import retrofit2.http.GET
+import retrofit2.http.Header
+import retrofit2.http.POST
+import retrofit2.http.Path
 
 interface ApiService {
-    suspend fun login(request: LoginRequest): LoginResponse
-    suspend fun register(request: LoginRequest): LoginResponse
-    suspend fun getProducts(): List<ProductDto>
-    suspend fun getProductById(id: String): ProductDto
-}
 
-/**
- * Mock implementation sẵn sàng chạy thử và dễ dàng thay bằng Retrofit/Ktor khi backend online.
- */
-class MockApiService : ApiService {
-    override suspend fun login(request: LoginRequest): LoginResponse {
-        delay(600) // Giả lập độ trễ mạng
-        return LoginResponse(
-            token = "jwt-mock-token-sample-sep-carled",
-            user = UserDto(
-                id = "usr_001",
-                email = request.email,
-                fullName = "Car LED Driver",
-                role = "Customer"
-            )
-        )
-    }
+    // -------------------------------------------------------------------------
+    // Auth
+    // -------------------------------------------------------------------------
 
-    override suspend fun register(request: LoginRequest): LoginResponse {
-        delay(600)
-        return LoginResponse(
-            token = "jwt-mock-register-token-sep-carled",
-            user = UserDto(
-                id = "usr_new_${System.currentTimeMillis() % 1000}",
-                email = request.email,
-                fullName = request.email.substringBefore("@").replaceFirstChar { it.uppercase() },
-                role = "Customer"
-            )
-        )
-    }
+    @POST("api/auth/login")
+    suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 
-    override suspend fun getProducts(): List<ProductDto> {
-        delay(400)
-        return listOf(
-            ProductDto(
-                id = "prod_01",
-                name = "ESP32 Matrix HUD LED Bar 64x16",
-                description = "Thanh LED kính lái độ phân giải cao hỗ trợ hiệu ứng nhân vật Character và âm thanh",
-                price = 850000.0,
-                imageUrl = "https://images.unsplash.com/photo-1550745165-9bc0b252726f",
-                stockQuantity = 25,
-                category = "LED Hardware"
-            ),
-            ProductDto(
-                id = "prod_02",
-                name = "Gói hoạt ảnh: Cyberpunk Neon Character Pack",
-                description = "Bộ sưu tập 12 animation nhân vật phong cách tương lai chiếu kính lái xe",
-                price = 150000.0,
-                imageUrl = "https://images.unsplash.com/photo-1563089145-599997674d42",
-                stockQuantity = 999,
-                category = "Digital Content"
-            ),
-            ProductDto(
-                id = "prod_03",
-                name = "Bộ cấp nguồn chuyển đổi 12V sang 5V 5A siêu êm",
-                description = "Chuyên dụng cho lắp đặt ô tô chống sụt áp và lọc nhiễu hệ thống điện xe",
-                price = 120000.0,
-                imageUrl = "https://images.unsplash.com/photo-1581092160607-ee22621dd758",
-                stockQuantity = 40,
-                category = "Accessories"
-            )
-        )
-    }
+    // Returns 201 + RegisterResponse (no token — user must verify email first)
+    @POST("api/auth/register")
+    suspend fun register(@Body request: RegisterRequest): Response<RegisterResponse>
 
-    override suspend fun getProductById(id: String): ProductDto {
-        return getProducts().first { it.id == id }
-    }
+    @POST("api/auth/verify-email")
+    suspend fun verifyEmail(@Body request: VerifyEmailRequest): Response<Unit>
+
+    @POST("api/auth/resend-verification")
+    suspend fun resendVerification(@Body request: ResendVerificationRequest): Response<Unit>
+
+    @POST("api/auth/forgot-password")
+    suspend fun forgotPassword(@Body request: ForgotPasswordRequest): Response<Unit>
+
+    @POST("api/auth/reset-password")
+    suspend fun resetPassword(@Body request: ResetPasswordRequest): Response<Unit>
+
+    @POST("api/auth/refresh")
+    suspend fun refreshToken(@Body request: RefreshTokenRequest): Response<LoginResponse>
+
+    @POST("api/auth/google")
+    suspend fun googleAuth(@Body request: GoogleAuthRequest): Response<LoginResponse>
+
+    @POST("api/auth/logout")
+    suspend fun logout(): Response<Unit>
+
+    // -------------------------------------------------------------------------
+    // Users
+    // -------------------------------------------------------------------------
+
+    // No auth interceptor is configured on OkHttpClient (see ServiceLocator),
+    // so the bearer token has to be passed explicitly on every call that needs it.
+    @GET("api/users/me")
+    suspend fun getCurrentUserProfile(
+        @Header("Authorization") authorization: String
+    ): Response<UserProfileResponse>
+
+    // -------------------------------------------------------------------------
+    // Products
+    // -------------------------------------------------------------------------
+
+    @GET("api/products")
+    suspend fun getProducts(): Response<List<ProductDto>>
+
+    @GET("api/products/{id}")
+    suspend fun getProductById(@Path("id") id: String): Response<ProductDto>
 }

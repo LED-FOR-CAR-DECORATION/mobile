@@ -643,4 +643,18 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
             }
         }
     }
+    fun exportGallery(context: Context, format: ExportFormat) {
+        val s = _state.value
+        val d = s.document ?: return
+        viewModelScope.launch {
+            val success = withContext(Dispatchers.IO) {
+                ImageExportHelper.exportDocument(context, d, s.name, format)
+            }
+            if (success) {
+                feedback("Đã xuất ảnh vào thư mục Pictures/CarLED thành công!")
+            } else {
+                feedback("Không thể xuất ảnh vào Gallery.")
+            }
+        }
+    }
 }
