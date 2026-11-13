@@ -1,6 +1,7 @@
 package com.carled.app.presentation.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,6 +43,8 @@ fun WindowFrame(
     onClose: (() -> Unit)? = null,
     footer: (@Composable ColumnScope.() -> Unit)? = null,
     compact: Boolean = false,
+    scrollState: ScrollState = rememberScrollState(),
+    fillContent: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(modifier.background(Cream).border(1.5.dp, Ink)) {
@@ -47,9 +52,9 @@ fun WindowFrame(
         Divider()
         Column(
             Modifier
-                .weight(1f, fill = false)
+                .weight(1f, fill = fillContent)
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(
                     horizontal = if (compact) 16.dp else 20.dp,
                     vertical = if (compact) 12.dp else 20.dp
@@ -107,6 +112,7 @@ private fun WindowButton(
             .fillMaxHeight()
             .background(color)
             .border(0.75.dp, Ink)
+            .semantics { contentDescription = label }
             .clickable(enabled = onClick != null, role = Role.Button, onClickLabel = label) { onClick?.invoke() },
         contentAlignment = Alignment.Center
     ) { glyph() }

@@ -1,5 +1,7 @@
 # Car LED Ambient & Projection - Mobile Application
 
+See [the mobile Commission flow](COMMISSION_FLOW.md) for the entry point, demo behavior and verification steps.
+
 ## Mirage mobile — Stitch implementation
 
 Giao diện chạy hiện tại dùng thiết kế [Mirage Mobile LED Controller](https://stitch.withgoogle.com/projects/6847000307657413933): nền sáng, xanh sage, viền đen, font Inter (giấy phép OFL kèm tại `app/src/main/assets/licenses/`). Chỉ có ba tab **Thiết bị / Nội dung / Tài khoản**, cùng đăng nhập, quét BLE, điều khiển và chạy chữ. Luồng cửa hàng/tin nhắn cũ không còn nằm trong điều hướng ứng dụng.

@@ -1,6 +1,7 @@
 package com.carled.app.presentation.screens.main
 
 import androidx.compose.foundation.Image
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -52,6 +53,8 @@ import com.carled.app.presentation.components.MirageBar
 import com.carled.app.presentation.components.MirageMuted
 import com.carled.app.presentation.components.WindowFrame
 import com.carled.app.presentation.components.flatSurface
+import com.carled.app.presentation.components.MirageButton
+import com.carled.app.presentation.screens.commission.CommissionScreen
 import com.carled.app.presentation.screens.control.ControlViewModel
 import com.carled.app.presentation.screens.control.MirageControlScreen
 import com.carled.app.presentation.screens.profile.MirageProfileScreen
@@ -66,6 +69,7 @@ const val HOME_TAB_HOME = 0
 const val HOME_TAB_LIBRARY = 1
 const val HOME_TAB_CONTROL = 2
 const val HOME_TAB_ACCOUNT = 3
+private const val HOME_TAB_COMMISSION = 4
 
 data class LetterProfile(val id: String, val name: String, val preview: String = "Abc")
 
@@ -84,6 +88,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                      openEditProfile: () -> Unit = {}, openLetterProfile: (String) -> Unit = {},
                      initialTab: Int = HOME_TAB_HOME) {
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
+    BackHandler(enabled = tab == HOME_TAB_COMMISSION) { tab = HOME_TAB_HOME }
     var confirmDisconnect by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
@@ -102,7 +107,12 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
             MirageBar(titles[tab])
         }
     }, bottomBar = {
-        HardNavBar(selectedIndex = tab, onTabSelected = { tab = it }, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))    }, containerColor = MirageBackground) { padding ->
+        HardNavBar(
+            selectedIndex = if (tab == HOME_TAB_COMMISSION) HOME_TAB_HOME else tab,
+            onTabSelected = { tab = it },
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }, containerColor = MirageBackground) { padding ->
         when (tab) {
             HOME_TAB_HOME -> {
                 val profiles = remember(user) { MockLetterProfileStore.listSaved(user?.id ?: "") }
@@ -143,6 +153,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
 
                         // Quick start — icons scaled up to 48.dp (2x bigger)
                         DeviceSection(title = "Quick start") {
+                            MirageButton("Commission", { tab = HOME_TAB_COMMISSION }, Modifier.fillMaxWidth())
                             Row(
                                 Modifier.fillMaxWidth().flatSurface(color = Cream)
                                     .clickable(onClick = openUpload).padding(12.dp),
@@ -227,6 +238,9 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                         onLogout = { scanner.disconnectDevice(); logout() }
                     )
                 }
+            }
+            HOME_TAB_COMMISSION -> {
+                user?.let { CommissionScreen(it, Modifier.padding(padding)) }
             }
         }
     }
