@@ -3,6 +3,7 @@ package com.carled.app.presentation.screens.commission
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -60,6 +61,8 @@ import java.util.Locale
 
 private const val MAX_REFERENCES = 5
 private val CardShape = RoundedCornerShape(3.dp)
+private fun formatVnd(amount: Long) =
+    NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN")).format(amount) + " VND"
 private val ImagePickerRequest = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
 private val Steps = listOf(
     "Request created", "Staff is checking the request", "Staff approved the request",
@@ -76,8 +79,10 @@ internal fun CommissionScreen(user: User, modifier: Modifier = Modifier) {
     var tab by rememberSaveable(user.id) { mutableStateOf(CommissionTab.CREATE) }
     var selectedId by rememberSaveable(user.id) { mutableStateOf<String?>(null) }
     var paymentId by rememberSaveable(user.id) { mutableStateOf<String?>(null) }
+    var conversationId by rememberSaveable(user.id) { mutableStateOf<String?>(null) }
     val request = model.requests.firstOrNull { it.id == selectedId }
     val checkout = model.requests.firstOrNull { it.id == paymentId }
+    val conversation = model.requests.firstOrNull { it.id == conversationId && it.payment?.isPaid != false }
 
     Column(modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().selectableGroup()) {
@@ -131,8 +136,15 @@ internal fun CommissionScreen(user: User, modifier: Modifier = Modifier) {
         MockSePayCheckout(
             checkout.payment,
             onClose = { paymentId = null },
-            onConfirm = { model.simulateSePayReceipt(checkout.id) }
+            onConfirm = { model.simulateSePayReceipt(checkout.id) },
+            onOpenChat = {
+                paymentId = null
+                tab = CommissionTab.INBOX
+                conversationId = checkout.id
+            }
         )
+    } else if (conversation != null) {
+        CommissionConversation(conversation, { conversationId = null }) { model.send(conversation.id, it) }
     } else if (request != null) {
         val close = { selectedId = null }
         if (tab == CommissionTab.INBOX) {
@@ -150,6 +162,9 @@ internal fun CommissionScreen(user: User, modifier: Modifier = Modifier) {
 private fun CommissionForm(user: User, model: CommissionViewModel, onSubmit: (String) -> Unit) {
     val draft = model.draft
     var choosingType by remember { mutableStateOf(false) }
+    var choosingSize by remember { mutableStateOf(false) }
+    var editingBrief by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = editingBrief) { editingBrief = false }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
             val current = model.draft
@@ -157,64 +172,79 @@ private fun CommissionForm(user: User, model: CommissionViewModel, onSubmit: (St
         }
     }
 
-    CommissionPanel("Create commission form") {
-        CommissionField(user.fullName?.takeIf { it.isNotBlank() } ?: user.id, {}, "Username (user ID)", readOnly = true)
-        Text("Commission type", color = Ink, style = MaterialTheme.typography.labelLarge)
-        Box {
-            MirageButton(draft.type.label, { choosingType = true }, secondary = true)
-            DropdownMenu(expanded = choosingType, onDismissRequest = { choosingType = false }) {
-                CommissionType.entries.forEach { type ->
-                    DropdownMenuItem(text = { Text(type.label) }, onClick = {
-                        model.draft = draft.copy(type = type)
-                        choosingType = false
-                    })
-                }
-            }
-        }
-        CommissionField(draft.description, { model.draft = draft.copy(description = it) }, "Description", multiline = true)
-        Text("Reference images (optional, up to $MAX_REFERENCES)", style = MaterialTheme.typography.labelLarge, color = Ink)
-        (draft.references.map<Uri, Uri?> { it } +
-            List(minOf(3, MAX_REFERENCES - draft.references.size)) { null }).chunked(3).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { uri ->
-                    val slot = Modifier.weight(1f).height(72.dp).background(Cream).border(1.dp, Ink)
-                    if (uri == null) {
-                        Box(
-                            slot.clickable(role = Role.Button) { picker.launch(ImagePickerRequest) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.NoteAdd, "Add reference image", tint = Ink, modifier = Modifier.size(34.dp))
-                        }
-                    } else {
-                        Box(slot) {
-                            AttachmentPreview(uri, "Reference image", Modifier.fillMaxSize())
-                            TextButton(
-                                onClick = { model.draft = draft.copy(references = draft.references - uri) },
-                                modifier = Modifier.align(Alignment.TopEnd).size(44.dp),
-                                contentPadding = PaddingValues(0.dp)
-                            ) { Text("×", color = Ink, modifier = Modifier.background(Cream)) }
-                        }
+    if (!editingBrief) {
+        CommissionPanel("Choose design and price") {
+            Text("LED matrix size", color = Ink, style = MaterialTheme.typography.labelLarge)
+            Box {
+                MirageButton(draft.size.label, { choosingSize = true }, secondary = true)
+                DropdownMenu(expanded = choosingSize, onDismissRequest = { choosingSize = false }) {
+                    CommissionSize.entries.forEach { size ->
+                        DropdownMenuItem(text = { Text(size.label) }, onClick = {
+                            model.draft = draft.copy(size = size)
+                            choosingSize = false
+                        })
                     }
                 }
-                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
+            Text("Commission type", color = Ink, style = MaterialTheme.typography.labelLarge)
+            Box {
+                MirageButton(draft.type.label, { choosingType = true }, secondary = true)
+                DropdownMenu(expanded = choosingType, onDismissRequest = { choosingType = false }) {
+                    CommissionType.entries.forEach { type ->
+                        DropdownMenuItem(text = { Text(type.label) }, onClick = {
+                            model.draft = draft.copy(type = type)
+                            choosingType = false
+                        })
+                    }
+                }
+            }
+            Text("Static image: 32 × 32 · 50,000 VND / 64 × 32 · 100,000 VND", color = Ink)
+            Text("Animated GIF: 50,000 VND per frame", color = Ink)
+            if (draft.type == CommissionType.GIF) {
+                CommissionField(draft.frameCount, { model.draft = draft.copy(frameCount = it) },
+                    "Frame count (2–$COMMISSION_MAX_FRAMES)", numeric = true)
+            }
+            draft.priceVnd?.let { Text("Total: ${formatVnd(it)}", color = Ink, fontWeight = FontWeight.Bold) }
+            MirageButton("Continue to brief", { editingBrief = true }, Modifier.fillMaxWidth(), enabled = draft.priceVnd != null)
         }
-        if (draft.type == CommissionType.GIF) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CommissionField(draft.frameRate, { model.draft = draft.copy(frameRate = it) }, "Frame rate (FPS)",
-                    Modifier.weight(1f), numeric = true)
-                CommissionField(draft.frameCount, { model.draft = draft.copy(frameCount = it) }, "Frame count",
-                    Modifier.weight(1f), numeric = true)
+    } else {
+        CommissionPanel("Design brief") {
+            Text("${draft.size.label} · ${draft.type.label} · ${formatVnd(requireNotNull(draft.priceVnd))}", color = Ink)
+            TextButton(onClick = { editingBrief = false }) { Text("Change design", color = Ink) }
+            CommissionField(user.fullName?.takeIf { it.isNotBlank() } ?: user.id, {}, "Username (user ID)", readOnly = true)
+            CommissionField(draft.description, { model.draft = draft.copy(description = it) }, "Description", multiline = true)
+            Text("Reference images (optional, up to $MAX_REFERENCES)", style = MaterialTheme.typography.labelLarge, color = Ink)
+            (draft.references.map<Uri, Uri?> { it } +
+                List(minOf(3, MAX_REFERENCES - draft.references.size)) { null }).chunked(3).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { uri ->
+                        val slot = Modifier.weight(1f).height(72.dp).background(Cream).border(1.dp, Ink)
+                        if (uri == null) {
+                            Box(
+                                slot.clickable(role = Role.Button) { picker.launch(ImagePickerRequest) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.NoteAdd, "Add reference image", tint = Ink, modifier = Modifier.size(34.dp))
+                            }
+                        } else {
+                            Box(slot) {
+                                AttachmentPreview(uri, "Reference image", Modifier.fillMaxSize())
+                                TextButton(
+                                    onClick = { model.draft = draft.copy(references = draft.references - uri) },
+                                    modifier = Modifier.align(Alignment.TopEnd).size(44.dp),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) { Text("×", color = Ink, modifier = Modifier.background(Cream)) }
+                            }
+                        }
+                    }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
             }
-            Text("Current frame price: 50¢ per frame", color = Ink)
-            draft.estimateInCents?.let { cents ->
-                val price = NumberFormat.getCurrencyInstance(Locale.US).format(cents / 100.0)
-                Text("Estimated price: $price", color = Ink)
-            }
+            MirageButton("Continue to payment", {
+                editingBrief = false
+                model.submit()?.let(onSubmit)
+            }, Modifier.fillMaxWidth(), enabled = draft.isValid, secondary = true)
         }
-        MirageButton("Submit request", {
-            model.submit()?.let(onSubmit)
-        }, Modifier.fillMaxWidth(), enabled = draft.isValid, secondary = true)
     }
 }
 
@@ -309,8 +339,12 @@ private fun CommissionTimeline(request: CommissionRequest, onClose: () -> Unit, 
 }
 
 @Composable
-private fun MockSePayCheckout(payment: MockSePayPayment, onClose: () -> Unit, onConfirm: () -> Unit) {
-    val amount = NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN")).format(payment.amountVnd)
+private fun MockSePayCheckout(
+    payment: MockSePayPayment,
+    onClose: () -> Unit,
+    onConfirm: () -> Unit,
+    onOpenChat: () -> Unit
+) {
     Dialog(onDismissRequest = onClose) {
         WindowFrame("SePay · Demo payment", Modifier.fillMaxWidth(), onClose = onClose, compact = true) {
             SectionTitle(if (payment.isPaid) "Payment received" else "Awaiting bank transfer")
@@ -319,13 +353,13 @@ private fun MockSePayCheckout(payment: MockSePayPayment, onClose: () -> Unit, on
                 Modifier.fillMaxWidth().background(GreenLight).border(1.dp, Ink).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Amount: $amount VND", color = Ink, fontWeight = FontWeight.Bold)
+                Text("Amount: ${formatVnd(payment.amountVnd)}", color = Ink, fontWeight = FontWeight.Bold)
                 Text("Bank account: DEMO ONLY", color = Ink)
                 Text("Transfer content: ${payment.transferCode}", color = Ink)
                 payment.transactionId?.let { Text("Transaction: $it", color = Ink) }
             }
             if (payment.isPaid) {
-                MirageButton("Back to progress", onClose, Modifier.fillMaxWidth())
+                MirageButton("Open commission chat", onOpenChat, Modifier.fillMaxWidth())
             } else {
                 MirageButton("Simulate successful transfer", onConfirm, Modifier.fillMaxWidth())
                 TextButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterHorizontally)) {

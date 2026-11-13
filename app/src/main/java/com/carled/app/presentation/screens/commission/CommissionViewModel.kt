@@ -9,8 +9,14 @@ import java.util.UUID
 
 internal enum class CommissionType(val label: String) { IMAGE("Image"), GIF("GIF") }
 
-private const val MOCK_IMAGE_PRICE_VND = 150_000L
-private const val MOCK_VND_PER_US_CENT = 250L
+internal enum class CommissionSize(val label: String, val staticPriceVnd: Long) {
+    SQUARE("32 × 32", 50_000L),
+    WIDE("64 × 32", 100_000L)
+}
+
+internal const val COMMISSION_FRAME_PRICE_VND = 50_000L
+// Mobile projects 64 × 32 RGB565 frames (4 KiB each). Reserve half of the 128 KiB SPIFFS partition.
+internal const val COMMISSION_MAX_FRAMES = 16
 
 internal data class MockSePayPayment(
     val transferCode: String,
@@ -22,18 +28,21 @@ internal data class MockSePayPayment(
 
 internal data class CommissionDraft(
     val type: CommissionType = CommissionType.IMAGE,
+    val size: CommissionSize = CommissionSize.SQUARE,
     val description: String = "",
-    val frameRate: String = "8",
-    val frameCount: String = "24",
+    val frameCount: String = "8",
     val references: List<Uri> = emptyList()
 ) {
-    val estimateInCents: Long?
-        get() = frameCount.toIntOrNull()?.takeIf { it > 0 }?.times(50L)
+    val priceVnd: Long?
+        get() = when (type) {
+            CommissionType.IMAGE -> size.staticPriceVnd
+            CommissionType.GIF -> frameCount.toIntOrNull()
+                ?.takeIf { it in 2..COMMISSION_MAX_FRAMES }
+                ?.times(COMMISSION_FRAME_PRICE_VND)
+        }
 
     val isValid: Boolean
-        get() = description.isNotBlank() &&
-            (type == CommissionType.IMAGE ||
-                (frameRate.toIntOrNull()?.let { it > 0 } == true && estimateInCents != null))
+        get() = description.isNotBlank() && priceVnd != null
 }
 
 internal data class CommissionMessage(
@@ -93,12 +102,9 @@ internal class CommissionViewModel : ViewModel() {
         private set
 
     fun submit(): String? {
+        val amountVnd = draft.priceVnd ?: return null
         if (!draft.isValid) return null
         val id = UUID.randomUUID().toString().substringBefore('-').uppercase()
-        val amountVnd = when (draft.type) {
-            CommissionType.IMAGE -> MOCK_IMAGE_PRICE_VND
-            CommissionType.GIF -> requireNotNull(draft.estimateInCents) * MOCK_VND_PER_US_CENT
-        }
         val payment = MockSePayPayment(transferCode = "CM$id", amountVnd = amountVnd)
         requests = listOf(CommissionRequest(id, draft.copy(description = draft.description.trim()), payment = payment)) + requests
         draft = CommissionDraft()
@@ -124,7 +130,7 @@ internal class CommissionViewModel : ViewModel() {
     fun send(requestId: String, message: CommissionMessage) {
         if (message.text.isBlank() && message.attachment == null) return
         requests = requests.map { request ->
-            if (request.id == requestId && !request.canceled) {
+            if (request.id == requestId && !request.canceled && request.payment?.isPaid != false) {
                 request.copy(messages = request.messages + message)
             } else request
         }
