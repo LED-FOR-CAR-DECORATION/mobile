@@ -119,9 +119,6 @@ class LoginViewModel(
     fun onAuthCodeChange(newCode: String) =
         _uiState.update { it.copy(verificationCode = newCode, verifyError = null) }
 
-    /** Confirms the OTP sent to verificationEmail. Does NOT log the user in —
-     * verifyEmail only activates the account — so on success we close the
-     * dialog and drop the user back on the login form. */
     fun submitVerifyEmail() {
         val state = _uiState.value
         val email = state.verificationEmail
@@ -195,6 +192,8 @@ class LoginViewModel(
                 it.copy(isLoading = true, errorMessage = null, successMessage = null)
             }
 
+            val state = _uiState.value // Capture current state to get the email
+
             when (val result = call()) {
                 is Resource.Success -> {
                     _uiState.update {
@@ -206,8 +205,27 @@ class LoginViewModel(
                     }
                     onSuccess()
                 }
-                is Resource.Error -> _uiState.update {
-                    it.copy(isLoading = false, errorMessage = result.message)
+                is Resource.Error -> {
+                    val errorMessage = result.message ?: ""
+                    // Check if the server error indicates the account needs email verification
+                    if (errorMessage.contains("ACCOUNT_NOT_VERIFIED", ignoreCase = true) ||
+                        errorMessage.contains("not verified", ignoreCase = true)
+                    ) {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                showVerifyDialog = true,
+                                verificationEmail = state.email,
+                                verificationCode = "",
+                                verifyError = null,
+                                errorMessage = null
+                            )
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(isLoading = false, errorMessage = result.message)
+                        }
+                    }
                 }
                 is Resource.Loading -> _uiState.update { it.copy(isLoading = true) }
             }

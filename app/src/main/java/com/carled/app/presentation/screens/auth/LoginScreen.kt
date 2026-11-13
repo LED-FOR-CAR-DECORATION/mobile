@@ -73,8 +73,8 @@ fun LoginScreen(
             viewModel.loginWithSocial(provider, onSuccess = onLoginSuccess)
         },
         onClose = { focusManager.clearFocus() },
-        // AuthCodeDialog only ever appears after a successful register() call
-        // (see LoginViewModel.register / LoginUiState.showVerifyDialog).
+        // AuthCodeDialog appears after a successful register() call or when an
+        // unverified account attempts to log in (403 ACCOUNT_NOT_VERIFIED).
         // verifyEmail does not establish a session, so it does not call
         // onLoginSuccess — the ViewModel drops the user back on the login form.
         onAuthCodeChange = viewModel::onAuthCodeChange,
@@ -217,8 +217,7 @@ private fun LoginScreenContent(
         )
     }
 
-    // Shown only after a successful register() (state.showVerifyDialog is
-    // flipped on by LoginViewModel.register, never by the login path).
+    // Shown after a successful register() or when a 403 ACCOUNT_NOT_VERIFIED login occurs.
     if (state.showVerifyDialog) {
         AuthCodeDialog(
             code = state.verificationCode,
