@@ -23,8 +23,19 @@ class CommissionFlowTest {
         compose.onNodeWithText("Estimated price: $12.00").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Description").performScrollTo().performTextInput("Animated LED logo")
         compose.onNodeWithText("Submit request").performScrollTo().performClick()
+        compose.onNodeWithText("Awaiting bank transfer").assertIsDisplayed()
+        compose.onNodeWithText("Amount: 300.000 VND").assertIsDisplayed()
+        compose.onNodeWithText("Pay later").performClick()
+        compose.onNodeWithText("Awaiting payment").assertIsDisplayed()
         compose.onNodeWithText("Animated LED logo").performClick()
         compose.onNodeWithText("Request created").assertIsDisplayed()
+        compose.onNodeWithText("Open SePay payment").performClick()
+        compose.onNodeWithText("Simulate successful transfer").performClick()
+        compose.onNodeWithText("Payment received").assertIsDisplayed()
+        compose.onNodeWithText("Back to progress").performClick()
+        compose.onNodeWithText("Paid").assertIsDisplayed()
+        compose.onNodeWithText("Inbox").performClick()
+        compose.onNodeWithText("Staff: Demo SePay payment received", substring = true).assertIsDisplayed()
     }
 
     @Test

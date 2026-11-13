@@ -9,6 +9,17 @@ import java.util.UUID
 
 internal enum class CommissionType(val label: String) { IMAGE("Image"), GIF("GIF") }
 
+private const val MOCK_IMAGE_PRICE_VND = 150_000L
+private const val MOCK_VND_PER_US_CENT = 250L
+
+internal data class MockSePayPayment(
+    val transferCode: String,
+    val amountVnd: Long,
+    val transactionId: String? = null
+) {
+    val isPaid: Boolean get() = transactionId != null
+}
+
 internal data class CommissionDraft(
     val type: CommissionType = CommissionType.IMAGE,
     val description: String = "",
@@ -41,11 +52,14 @@ internal data class CommissionRequest(
     val completedSteps: Int = 1,
     val canceled: Boolean = false,
     val messages: List<CommissionMessage> = emptyList(),
-    val notification: String? = null
+    val notification: String? = null,
+    val payment: MockSePayPayment? = null
 ) {
     val status: String
         get() = when {
             canceled -> "Canceled"
+            payment?.isPaid == false -> "Awaiting payment"
+            payment?.isPaid == true -> "Paid"
             completedSteps >= 6 -> "In progress"
             else -> "Submitted"
         }
@@ -78,11 +92,33 @@ internal class CommissionViewModel : ViewModel() {
     )
         private set
 
-    fun submit() {
-        if (!draft.isValid) return
+    fun submit(): String? {
+        if (!draft.isValid) return null
         val id = UUID.randomUUID().toString().substringBefore('-').uppercase()
-        requests = listOf(CommissionRequest(id, draft.copy(description = draft.description.trim()))) + requests
+        val amountVnd = when (draft.type) {
+            CommissionType.IMAGE -> MOCK_IMAGE_PRICE_VND
+            CommissionType.GIF -> requireNotNull(draft.estimateInCents) * MOCK_VND_PER_US_CENT
+        }
+        val payment = MockSePayPayment(transferCode = "CM$id", amountVnd = amountVnd)
+        requests = listOf(CommissionRequest(id, draft.copy(description = draft.description.trim()), payment = payment)) + requests
         draft = CommissionDraft()
+        return id
+    }
+
+    fun simulateSePayReceipt(requestId: String) {
+        requests = requests.map { request ->
+            val payment = request.payment
+            if (request.id != requestId || request.canceled || payment == null || payment.isPaid) {
+                request
+            } else {
+                val receipt = "Demo SePay payment received for ${payment.transferCode}."
+                request.copy(
+                    payment = payment.copy(transactionId = "MOCK-$requestId"),
+                    notification = receipt,
+                    messages = request.messages + CommissionMessage(receipt)
+                )
+            }
+        }
     }
 
     fun send(requestId: String, message: CommissionMessage) {

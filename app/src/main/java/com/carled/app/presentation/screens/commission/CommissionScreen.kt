@@ -75,7 +75,9 @@ internal fun CommissionScreen(user: User, modifier: Modifier = Modifier) {
     val model: CommissionViewModel = viewModel(key = "commission:${user.id}")
     var tab by rememberSaveable(user.id) { mutableStateOf(CommissionTab.CREATE) }
     var selectedId by rememberSaveable(user.id) { mutableStateOf<String?>(null) }
+    var paymentId by rememberSaveable(user.id) { mutableStateOf<String?>(null) }
     val request = model.requests.firstOrNull { it.id == selectedId }
+    val checkout = model.requests.firstOrNull { it.id == paymentId }
 
     Column(modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().selectableGroup()) {
@@ -99,7 +101,10 @@ internal fun CommissionScreen(user: User, modifier: Modifier = Modifier) {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 when (tab) {
-                    CommissionTab.CREATE -> CommissionForm(user, model) { tab = CommissionTab.PROGRESS }
+                    CommissionTab.CREATE -> CommissionForm(user, model) { id ->
+                        tab = CommissionTab.PROGRESS
+                        paymentId = id
+                    }
                     CommissionTab.PROGRESS -> CommissionPanel("Progress tracking") {
                         model.requests.forEach { item ->
                             RequestCard(item, item.draft.description, item.status) { selectedId = item.id }
@@ -122,18 +127,27 @@ internal fun CommissionScreen(user: User, modifier: Modifier = Modifier) {
             }
         }
     }
-    if (request != null) {
+    if (checkout?.payment != null) {
+        MockSePayCheckout(
+            checkout.payment,
+            onClose = { paymentId = null },
+            onConfirm = { model.simulateSePayReceipt(checkout.id) }
+        )
+    } else if (request != null) {
         val close = { selectedId = null }
         if (tab == CommissionTab.INBOX) {
             CommissionConversation(request, close) { model.send(request.id, it) }
         } else {
-            CommissionTimeline(request, close)
+            CommissionTimeline(request, close) {
+                selectedId = null
+                paymentId = request.id
+            }
         }
     }
 }
 
 @Composable
-private fun CommissionForm(user: User, model: CommissionViewModel, onSubmit: () -> Unit) {
+private fun CommissionForm(user: User, model: CommissionViewModel, onSubmit: (String) -> Unit) {
     val draft = model.draft
     var choosingType by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -199,8 +213,7 @@ private fun CommissionForm(user: User, model: CommissionViewModel, onSubmit: () 
             }
         }
         MirageButton("Submit request", {
-            model.submit()
-            onSubmit()
+            model.submit()?.let(onSubmit)
         }, Modifier.fillMaxWidth(), enabled = draft.isValid, secondary = true)
     }
 }
@@ -265,13 +278,16 @@ private fun RequestCard(request: CommissionRequest, detail: String, status: Stri
 }
 
 @Composable
-private fun CommissionTimeline(request: CommissionRequest, onClose: () -> Unit) {
+private fun CommissionTimeline(request: CommissionRequest, onClose: () -> Unit, openPayment: () -> Unit) {
     Dialog(onDismissRequest = onClose) {
         WindowFrame("Progress tracking", modifier = Modifier.fillMaxWidth(), onClose = onClose, compact = true) {
             Text("Request #${request.id} · ${request.status}", color = Ink, fontWeight = FontWeight.Bold)
             Text(request.draft.description, color = Ink)
+            request.payment?.let { payment ->
+                MirageButton(if (payment.isPaid) "View payment receipt" else "Open SePay payment", openPayment)
+            }
             Steps.forEachIndexed { index, step ->
-                val completed = index < request.completedSteps
+                val completed = index < request.completedSteps || (step == "Payment completed" && request.payment?.isPaid == true)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Canvas(Modifier.size(28.dp)) {
                         val stroke = 1.dp.toPx()
@@ -286,6 +302,34 @@ private fun CommissionTimeline(request: CommissionRequest, onClose: () -> Unit) 
                         color = Ink, style = MaterialTheme.typography.bodyMedium,
                         fontWeight = if (completed) FontWeight.Bold else FontWeight.Normal
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MockSePayCheckout(payment: MockSePayPayment, onClose: () -> Unit, onConfirm: () -> Unit) {
+    val amount = NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN")).format(payment.amountVnd)
+    Dialog(onDismissRequest = onClose) {
+        WindowFrame("SePay · Demo payment", Modifier.fillMaxWidth(), onClose = onClose, compact = true) {
+            SectionTitle(if (payment.isPaid) "Payment received" else "Awaiting bank transfer")
+            Text("Simulation only. No money is transferred.", color = Ink)
+            Column(
+                Modifier.fillMaxWidth().background(GreenLight).border(1.dp, Ink).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Amount: $amount VND", color = Ink, fontWeight = FontWeight.Bold)
+                Text("Bank account: DEMO ONLY", color = Ink)
+                Text("Transfer content: ${payment.transferCode}", color = Ink)
+                payment.transactionId?.let { Text("Transaction: $it", color = Ink) }
+            }
+            if (payment.isPaid) {
+                MirageButton("Back to progress", onClose, Modifier.fillMaxWidth())
+            } else {
+                MirageButton("Simulate successful transfer", onConfirm, Modifier.fillMaxWidth())
+                TextButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    Text("Pay later", color = Ink)
                 }
             }
         }
