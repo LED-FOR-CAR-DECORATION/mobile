@@ -1,5 +1,6 @@
 package com.carled.app.presentation.screens.auth
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -28,6 +30,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.GetCredentialResponse
 import com.carled.app.R
 import com.carled.app.presentation.components.HardButton
 import com.carled.app.presentation.components.HardCheckbox
@@ -39,9 +44,15 @@ import com.carled.app.presentation.theme.Cream
 import com.carled.app.presentation.theme.ErrorRed
 import com.carled.app.presentation.theme.GreenDark
 import com.carled.app.presentation.theme.Ink
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 private val SocialProviders = listOf("Google", "Apple", "Facebook", "Guest")
 
+@SuppressLint("LocalContextGetResourceValueCall")
 @Composable
 fun LoginScreen(
     viewModel: LoginViewModel,
@@ -50,6 +61,7 @@ fun LoginScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
 
     val submit: () -> Unit = {
         focusManager.clearFocus()
@@ -70,13 +82,22 @@ fun LoginScreen(
         },
         onToggleMode = viewModel::toggleMode,
         onSocialClick = { provider ->
-            viewModel.loginWithSocial(provider, onSuccess = onLoginSuccess)
+            if (provider == "Google") {
+                handleGoogleSignIn(
+                    context = context,
+                    webClientId = context.getString(R.string.default_web_client_id),
+                    onTokenReceived = { idToken ->
+                        viewModel.loginWithGoogle(idToken, onSuccess = onLoginSuccess)
+                    },
+                    onError = { errorMessage ->
+                        android.widget.Toast.makeText(context, "Sign-In Error: $errorMessage", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                )
+            } else {
+                viewModel.loginWithSocial(provider, onSuccess = onLoginSuccess)
+            }
         },
         onClose = { focusManager.clearFocus() },
-        // AuthCodeDialog appears after a successful register() call or when an
-        // unverified account attempts to log in (403 ACCOUNT_NOT_VERIFIED).
-        // verifyEmail does not establish a session, so it does not call
-        // onLoginSuccess — the ViewModel drops the user back on the login form.
         onAuthCodeChange = viewModel::onAuthCodeChange,
         onResendCode = viewModel::resendVerificationCode,
         onVerifySubmit = viewModel::submitVerifyEmail,
@@ -217,7 +238,6 @@ private fun LoginScreenContent(
         )
     }
 
-    // Shown after a successful register() or when a 403 ACCOUNT_NOT_VERIFIED login occurs.
     if (state.showVerifyDialog) {
         AuthCodeDialog(
             code = state.verificationCode,
@@ -237,7 +257,7 @@ private fun BoxScope.LoginHero() {
         modifier = Modifier.fillMaxSize()
     ) {
         Image(
-            painter = painterResource(id = R.drawable.bg_image2), // or R.drawable.login_bg
+            painter = painterResource(id = R.drawable.bg_image2),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
@@ -283,4 +303,45 @@ private fun VerifyDialogPreview() {
         onForgotPasswordClick = {}, onToggleMode = {}, onSocialClick = {}, onClose = {},
         onAuthCodeChange = {}, onResendCode = {}, onVerifySubmit = {}, onDismissVerifyDialog = {}
     )
+}
+
+fun handleGoogleSignIn(
+    context: android.content.Context,
+    webClientId: String,
+    onTokenReceived: (String) -> Unit,
+    onError: (String) -> Unit
+) {
+    val credentialManager = CredentialManager.create(context)
+
+    val googleIdOption = GetGoogleIdOption.Builder()
+        .setFilterByAuthorizedAccounts(false)
+        .setServerClientId(webClientId)
+        .setAutoSelectEnabled(true)
+        .build()
+
+    val request = GetCredentialRequest.Builder()
+        .addCredentialOption(googleIdOption)
+        .build()
+
+    CoroutineScope(Dispatchers.Main).launch {
+        try {
+            val result: GetCredentialResponse = credentialManager.getCredential(
+                context = context,
+                request = request
+            )
+
+            val credential = result.credential
+            if (credential is androidx.credentials.CustomCredential &&
+                credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+            ) {
+                val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                val idToken = googleIdTokenCredential.idToken
+                onTokenReceived(idToken)
+            } else {
+                onError("Unexpected credential type received.")
+            }
+        } catch (e: Exception) {
+            onError(e.localizedMessage ?: "Google Sign-In failed")
+        }
+    }
 }

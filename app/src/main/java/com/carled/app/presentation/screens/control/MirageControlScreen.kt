@@ -17,6 +17,7 @@ fun MirageControlScreen(
     back: () -> Unit,
     scanner: () -> Unit,
     openPanelControl: (String) -> Unit = {},
+    openClaimDevice: () -> Unit = {},
     userId: String = ""
 ) {
     val connectionState by vm.connectionState.collectAsState()
@@ -38,7 +39,7 @@ fun MirageControlScreen(
             onClose = back,
             modifier = Modifier.fillMaxSize()
         ) {
-            DeviceSection(title = "Owned device:", onAdd = scanner) {
+            DeviceSection(title = "Owned device:", onAdd = openClaimDevice) {
                 if (device == null) {
                     EmptyRow(
                         if (connectionState is ConnectionState.Connecting) "Đang kết nối…"

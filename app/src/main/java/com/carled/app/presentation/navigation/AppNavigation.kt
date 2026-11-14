@@ -21,6 +21,8 @@ import com.carled.app.domain.model.ConnectionState
 import com.carled.app.domain.model.User
 import com.carled.app.presentation.screens.auth.*
 import com.carled.app.presentation.screens.canvas.*
+import com.carled.app.presentation.screens.claim.ClaimDeviceScreen
+import com.carled.app.presentation.screens.claim.ClaimDeviceViewModel
 import com.carled.app.presentation.screens.control.*
 import com.carled.app.presentation.screens.main.MirageHomeScreen
 import com.carled.app.presentation.screens.marquee.*
@@ -61,16 +63,20 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                         loginUseCase = ServiceLocator.loginUseCase,
                         registerUseCase = ServiceLocator.registerUseCase,
                         verifyEmailUseCase = ServiceLocator.verifyEmailUseCase,
-                        resendVerificationUseCase = ServiceLocator.resendVerificationUseCase
+                        resendVerificationUseCase = ServiceLocator.resendVerificationUseCase,
+                        googleAuthUseCase = ServiceLocator.googleAuthUseCase
                     )
                 }
             )
-            MirageLoginScreen(vm) {
-                navController.navigate(NavRoute.Main.route) {
-                    popUpTo(NavRoute.Login.route) { inclusive = true }
-                    launchSingleTop = true
+            LoginScreen(
+                viewModel = vm,
+                onLoginSuccess = {
+                    navController.navigate(NavRoute.Main.route) {
+                        popUpTo(NavRoute.Login.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
-            }
+            )
         }
         composable(NavRoute.Main.route) {
             HomeRoute(navController, control, scanner, user, initialTab = 0, onLogout = logout)
@@ -131,6 +137,28 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
             val id = entry.arguments?.getString("id")
             PanelControlScreen(control, id, goBack, goScan)
         }
+        composable(NavRoute.ClaimDevice.route) { entry ->
+            val vm: ClaimDeviceViewModel = viewModel(
+                entry,
+                factory = factory { ClaimDeviceViewModel(ServiceLocator.deviceClaimRepository, ServiceLocator.bleUseCases) }
+            )
+            ClaimDeviceScreen(
+                vm = vm,
+                back = goBack,
+                onFinished = { connected ->
+                    if (connected) {
+                        // Claimed and already paired over BLE — go straight to its controls.
+                        navController.navigate(NavRoute.PanelControl.create("current")) {
+                            popUpTo(NavRoute.ClaimDevice.route) { inclusive = true }
+                        }
+                    } else {
+                        // Claimed, but not connected (auto-connect was off, cancelled, or failed).
+                        // Hand back to Home; the person can connect from there whenever they like.
+                        goBack()
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -164,6 +192,7 @@ private fun HomeRoute(
         logout = onLogout,
         openEffect = { navController.navigate(NavRoute.Effect.route) },
         openCharacter = { navController.navigate(NavRoute.Character.create(it)) },
+        openClaimDevice = { navController.navigate(NavRoute.ClaimDevice.route) },
         initialTab = initialTab
     )
 }

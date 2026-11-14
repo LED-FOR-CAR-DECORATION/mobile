@@ -114,11 +114,6 @@ data class ApiErrorResponse(
     val timestamp: String? = null,
     val traceId: String? = null
 ) {
-    /**
-     * Returns the most specific error message:
-     * - First validation detail when present (field-level errors)
-     * - Top-level message otherwise
-     */
     fun resolvedMessage(): String? =
         details?.firstOrNull()?.message?.takeIf { it.isNotBlank() }
             ?: message?.takeIf { it.isNotBlank() }

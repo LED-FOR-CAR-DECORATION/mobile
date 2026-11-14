@@ -82,6 +82,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                      openMarquee: () -> Unit, openUpload: () -> Unit, logout: () -> Unit,
                      openEffect: () -> Unit = {}, openCharacter: (String) -> Unit = {},
                      openEditProfile: () -> Unit = {}, openLetterProfile: (String) -> Unit = {},
+                     openClaimDevice: () -> Unit = {},
                      initialTab: Int = HOME_TAB_HOME) {
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
     var confirmDisconnect by remember { mutableStateOf(false) }
@@ -157,7 +158,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                             }
                             Row(
                                 Modifier.fillMaxWidth().flatSurface(color = Cream)
-                                    .clickable(onClick = openScan).padding(12.dp),
+                                    .clickable(onClick = openClaimDevice).padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
@@ -211,6 +212,7 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                         back = { tab = HOME_TAB_HOME },
                         scanner = openScan,
                         openPanelControl = { openControl() },
+                        openClaimDevice = openClaimDevice,
                         userId = user?.id ?: ""
                     )
                 }

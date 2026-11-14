@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.carled.app.core.common.Resource
 import com.carled.app.domain.model.User
+import com.carled.app.domain.usecase.auth.GoogleAuthUseCase
 import com.carled.app.domain.usecase.auth.LoginUseCase
 import com.carled.app.domain.usecase.auth.RegisterUseCase
 import com.carled.app.domain.usecase.auth.ResendVerificationUseCase
@@ -18,7 +19,8 @@ class LoginViewModel(
     private val loginUseCase: LoginUseCase,
     private val registerUseCase: RegisterUseCase,
     private val verifyEmailUseCase: VerifyEmailUseCase,
-    private val resendVerificationUseCase: ResendVerificationUseCase
+    private val resendVerificationUseCase: ResendVerificationUseCase,
+    private val googleAuthUseCase: GoogleAuthUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LoginUiState())
@@ -72,6 +74,12 @@ class LoginViewModel(
         }
     }
 
+    fun loginWithGoogle(idToken: String, onSuccess: () -> Unit) {
+        authenticate(onSuccess) {
+            googleAuthUseCase(idToken)
+        }
+    }
+
     fun register(onSuccess: () -> Unit) {
         val state = _uiState.value
         viewModelScope.launch {
@@ -114,7 +122,7 @@ class LoginViewModel(
         }
     }
 
-    // Email verification (AuthCodeDialog) — only ever shown after register()
+    // Email verification (AuthCodeDialog)
 
     fun onAuthCodeChange(newCode: String) =
         _uiState.update { it.copy(verificationCode = newCode, verifyError = null) }
@@ -192,7 +200,7 @@ class LoginViewModel(
                 it.copy(isLoading = true, errorMessage = null, successMessage = null)
             }
 
-            val state = _uiState.value // Capture current state to get the email
+            val state = _uiState.value
 
             when (val result = call()) {
                 is Resource.Success -> {
@@ -207,7 +215,6 @@ class LoginViewModel(
                 }
                 is Resource.Error -> {
                     val errorMessage = result.message ?: ""
-                    // Check if the server error indicates the account needs email verification
                     if (errorMessage.contains("ACCOUNT_NOT_VERIFIED", ignoreCase = true) ||
                         errorMessage.contains("not verified", ignoreCase = true)
                     ) {

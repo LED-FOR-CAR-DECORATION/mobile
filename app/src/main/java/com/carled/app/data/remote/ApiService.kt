@@ -1,5 +1,7 @@
 package com.carled.app.data.remote
 
+import com.carled.app.data.remote.dto.ClaimDeviceRequest
+import com.carled.app.data.remote.dto.ClaimDeviceResponse
 import com.carled.app.data.remote.dto.ForgotPasswordRequest
 import com.carled.app.data.remote.dto.GoogleAuthRequest
 import com.carled.app.data.remote.dto.LoginRequest
@@ -73,4 +75,16 @@ interface ApiService {
 
     @GET("api/products/{id}")
     suspend fun getProductById(@Path("id") id: String): Response<ProductDto>
+
+    // -------------------------------------------------------------------------
+    // Devices
+    // -------------------------------------------------------------------------
+
+    // Verifies the signed QR payload (sn/mac/sig) and attaches the device to
+    // whichever account the bearer token identifies.
+    @POST("api/devices/claim")
+    suspend fun claimDevice(
+        @Header("Authorization") authorization: String,
+        @Body request: ClaimDeviceRequest
+    ): Response<ClaimDeviceResponse>
 }

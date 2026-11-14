@@ -3,6 +3,7 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">10.0.2.2</domain>      <!-- emulator -->
         <domain includeSubdomains="false">192.168.14.182</domain>
-        <domain includeSubdomains="false">https://boundary-insights-refused-triangle.trycloudflare.com/</domain>   <!-- physical device -->
+        <domain includeSubdomains="false">https://boundary-insights-refused-triangle.trycloudflare.com/</domain>
+        <domain includeSubdomains="false">https://lumintra-backend-staging.bluedesert-a7b94014.eastasia.azurecontainerapps.io/</domain> <!-- physical device -->
     </domain-config>
 </network-security-config>
