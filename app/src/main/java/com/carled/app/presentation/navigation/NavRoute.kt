@@ -22,6 +22,10 @@ sealed class NavRoute(val route: String) {
     object PanelControl : NavRoute("panel-control/{id}") {
         fun create(panelId: String) = "panel-control/${Uri.encode(panelId)}"
     }
+    object ClaimDevice : NavRoute("claim-device")
+    object DeviceInfo : NavRoute("device-info/{id}") {
+        fun create(panelId: String) = "device-info/${Uri.encode(panelId)}"
+    }
 
     @Deprecated("No such destination in AppNavigation. Use Studio.")
     object Canvas : NavRoute("canvas")

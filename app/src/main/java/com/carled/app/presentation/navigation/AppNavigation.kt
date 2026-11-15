@@ -21,6 +21,8 @@ import com.carled.app.domain.model.ConnectionState
 import com.carled.app.domain.model.User
 import com.carled.app.presentation.screens.auth.*
 import com.carled.app.presentation.screens.canvas.*
+import com.carled.app.presentation.screens.claim.ClaimDeviceScreen
+import com.carled.app.presentation.screens.claim.ClaimDeviceViewModel
 import com.carled.app.presentation.screens.control.*
 import com.carled.app.presentation.screens.main.MirageHomeScreen
 import com.carled.app.presentation.screens.marquee.*
@@ -38,6 +40,7 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
     val context = LocalContext.current.applicationContext
     val control: ControlViewModel = viewModel(factory = factory { ControlViewModel(ServiceLocator.bleUseCases) })
     val scanner: ScanViewModel = viewModel(factory = factory { ScanViewModel(ServiceLocator.bleUseCases) })
+    val ownedDevices: OwnedDevicesViewModel = viewModel(factory = factory { OwnedDevicesViewModel(ServiceLocator.deviceRepository) })
     val userFlow = remember { ServiceLocator.authRepository.getCurrentUser() }
     val user by userFlow.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
@@ -56,20 +59,31 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
         composable(NavRoute.Login.route) { entry ->
             val vm: LoginViewModel = viewModel(
                 entry,
-                factory = factory { LoginViewModel(ServiceLocator.loginUseCase, ServiceLocator.registerUseCase) }
-            )
-            MirageLoginScreen(vm) {
-                navController.navigate(NavRoute.Main.route) {
-                    popUpTo(NavRoute.Login.route) { inclusive = true }
-                    launchSingleTop = true
+                factory = factory {
+                    LoginViewModel(
+                        loginUseCase = ServiceLocator.loginUseCase,
+                        registerUseCase = ServiceLocator.registerUseCase,
+                        verifyEmailUseCase = ServiceLocator.verifyEmailUseCase,
+                        resendVerificationUseCase = ServiceLocator.resendVerificationUseCase,
+                        googleAuthUseCase = ServiceLocator.googleAuthUseCase
+                    )
                 }
-            }
+            )
+            LoginScreen(
+                viewModel = vm,
+                onLoginSuccess = {
+                    navController.navigate(NavRoute.Main.route) {
+                        popUpTo(NavRoute.Login.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            )
         }
         composable(NavRoute.Main.route) {
-            HomeRoute(navController, control, scanner, user, initialTab = 0, onLogout = logout)
+            HomeRoute(navController, control, scanner, ownedDevices, user, initialTab = 0, onLogout = logout)
         }
         composable(NavRoute.Library.route) {
-            HomeRoute(navController, control, scanner, user, initialTab = 1, onLogout = logout)
+            HomeRoute(navController, control, scanner, ownedDevices, user, initialTab = 1, onLogout = logout)
         }
         composable(NavRoute.Scan.route) { MirageScanScreen(scanner) { goBack() } }
         composable(NavRoute.Effect.route) { MirageEffectScreen(control, goBack, goScan) }
@@ -124,6 +138,40 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
             val id = entry.arguments?.getString("id")
             PanelControlScreen(control, id, goBack, goScan)
         }
+        composable(NavRoute.ClaimDevice.route) { entry ->
+            val vm: ClaimDeviceViewModel = viewModel(
+                entry,
+                factory = factory { ClaimDeviceViewModel(ServiceLocator.deviceClaimRepository, ServiceLocator.bleUseCases) }
+            )
+            ClaimDeviceScreen(
+                vm = vm,
+                back = goBack,
+                onFinished = { connected ->
+                    ownedDevices.refresh()
+                    if (connected) {
+                        // Claimed and already paired over BLE — go straight to its controls.
+                        navController.navigate(NavRoute.PanelControl.create("current")) {
+                            popUpTo(NavRoute.ClaimDevice.route) { inclusive = true }
+                        }
+                    } else {
+                        // Claimed, but not connected (auto-connect was off, cancelled, or failed).
+                        // Hand back to Home; the person can connect from there whenever they like.
+                        goBack()
+                    }
+                }
+            )
+        }
+        composable(NavRoute.DeviceInfo.route) { entry ->
+            val id = entry.arguments?.getString("id")
+            DeviceInfoScreen(
+                vm = control,
+                ownedDevices = ownedDevices,
+                panelId = id,
+                back = goBack,
+                openPanelControl = { deviceId -> navController.navigate(NavRoute.PanelControl.create(deviceId)) },
+                connectDevice = { mac -> scanner.connectDevice(mac) }
+            )
+        }
     }
 }
 
@@ -132,6 +180,7 @@ private fun HomeRoute(
     navController: NavHostController,
     control: ControlViewModel,
     scanner: ScanViewModel,
+    ownedDevices: OwnedDevicesViewModel,
     user: User?,
     initialTab: Int,
     onLogout: () -> Unit
@@ -142,13 +191,18 @@ private fun HomeRoute(
     MirageHomeScreen(
         control = control,
         scanner = scanner,
+        ownedDevices = ownedDevices,
         user = user,
         openScan = { navController.navigate(NavRoute.Scan.route) },
         openControl = {
             if (connected) {
                 navController.navigate(NavRoute.PanelControl.create("current"))
             } else {
-                navController.navigate(NavRoute.Control.route)
+                // NavRoute.Control ("control") has no destination registered in the
+                // NavHost below — navigating to it crashes with "Navigation destination
+                // ... cannot be found in the navigation graph". Nothing being BLE-connected
+                // yet means there's nothing to control, so send the person to pair first.
+                navController.navigate(NavRoute.Scan.route)
             }
         },
         openCanvas = { navController.navigate(NavRoute.Studio.create(it)) },
@@ -157,6 +211,8 @@ private fun HomeRoute(
         logout = onLogout,
         openEffect = { navController.navigate(NavRoute.Effect.route) },
         openCharacter = { navController.navigate(NavRoute.Character.create(it)) },
+        openClaimDevice = { navController.navigate(NavRoute.ClaimDevice.route) },
+        openDeviceInfo = { id -> navController.navigate(NavRoute.DeviceInfo.create(id)) },
         initialTab = initialTab
     )
 }

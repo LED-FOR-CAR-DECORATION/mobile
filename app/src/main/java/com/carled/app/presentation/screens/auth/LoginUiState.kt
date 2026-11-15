@@ -14,5 +14,10 @@ data class LoginUiState(
     val isLoading: Boolean = false,
     val loggedInUser: User? = null,
     val errorMessage: String? = null,
-    val successMessage: String? = null
+    val successMessage: String? = null,
+    val showVerifyDialog: Boolean = false,
+    val verificationEmail: String = "",
+    val verificationCode: String = "",
+    val isVerifying: Boolean = false,
+    val verifyError: String? = null
 )

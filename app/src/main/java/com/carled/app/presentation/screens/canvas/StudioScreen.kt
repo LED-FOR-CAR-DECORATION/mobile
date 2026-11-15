@@ -1,170 +1,394 @@
 package com.carled.app.presentation.screens.canvas
 
 import android.graphics.Bitmap
-import android.graphics.ImageDecoder
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.*
-import androidx.compose.foundation.gestures.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.*
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.geometry.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import com.carled.app.domain.model.*
-import com.carled.app.presentation.components.*
-import kotlinx.coroutines.*
-import kotlin.math.*
+import androidx.compose.ui.unit.sp
+import com.carled.app.domain.model.MirrorMode
+import com.carled.app.domain.model.PixelTool
+import com.carled.app.presentation.components.MirageBackground
+import com.carled.app.presentation.components.MirageInk
+import com.carled.app.presentation.components.MirageMuted
+import com.carled.app.presentation.components.MirageSage
+import com.carled.app.presentation.components.miragePanel
+import com.carled.app.presentation.theme.Cream
+import com.carled.app.presentation.theme.Green
+import com.carled.app.presentation.theme.Ink
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.floor
+import kotlin.math.max
+
+fun rasterizeBitmapToPixels(bitmap: Bitmap, targetWidth: Int, targetHeight: Int): List<Int> {
+    val scaled = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+    val pixels = IntArray(targetWidth * targetHeight)
+    scaled.getPixels(pixels, 0, targetWidth, 0, 0, targetWidth, targetHeight)
+    return pixels.map { it }.toList()
+}
 
 @Composable
-fun StudioScreen(viewModel: StudioViewModel, onBack: () -> Unit, importOnOpen: Boolean = false) {
+fun StudioScreen(
+    viewModel: StudioViewModel,
+    onBack: () -> Unit,
+    onProfile: () -> Unit = {},
+    importOnOpen: Boolean = false
+) {
     val state by viewModel.state.collectAsState()
     val doc = state.document
-    var size by remember { mutableStateOf(64 to 32) }
     var panel by remember { mutableStateOf<String?>(null) }
+    var showMenu by remember { mutableStateOf(false) }
     var leave by remember { mutableStateOf(false) }
     var image by remember { mutableStateOf<Bitmap?>(null) }
     var imageBusy by remember { mutableStateOf(false) }
     var imageError by remember { mutableStateOf<String?>(null) }
     var initialImport by remember { mutableStateOf(importOnOpen) }
+    var showExportDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) scope.launch {
-            imageBusy = true; imageError = null
-            try {
-                image = withContext(Dispatchers.IO) {
-                    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    context.contentResolver.openInputStream(uri).use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
-                    require(bounds.outWidth > 0 && bounds.outHeight > 0)
-                    var sample = 1
-                    while (max(bounds.outWidth, bounds.outHeight) / sample > 1024) sample *= 2
-                    val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
-                    context.contentResolver.openInputStream(uri).use {
-                        requireNotNull(android.graphics.BitmapFactory.decodeStream(it, null, options))
-                    }
-                }; panel = "import"
-            } catch (e: Exception) { imageError = "Không thể đọc ảnh. Hãy chọn ảnh khác." }
-            finally { imageBusy = false }
+    val picker =
+        rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            if (uri != null) scope.launch {
+                imageBusy = true; imageError = null
+                try {
+                    image = withContext(Dispatchers.IO) {
+                        val bounds = android.graphics.BitmapFactory.Options()
+                            .apply { inJustDecodeBounds = true }
+                        context.contentResolver.openInputStream(uri)
+                            .use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+                        require(bounds.outWidth > 0 && bounds.outHeight > 0)
+                        var sample = 1
+                        while (max(bounds.outWidth, bounds.outHeight) / sample > 1024) sample *= 2
+                        val options =
+                            android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+                        context.contentResolver.openInputStream(uri).use {
+                            requireNotNull(
+                                android.graphics.BitmapFactory.decodeStream(
+                                    it,
+                                    null,
+                                    options
+                                )
+                            )
+                        }
+                    }; panel = "import"
+                } catch (e: Exception) {
+                    imageError = "Không thể đọc ảnh. Hãy chọn ảnh khác."
+                } finally {
+                    imageBusy = false
+                }
+            }
         }
+
+    fun selectImage() {
+        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
-    fun selectImage() { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+
     fun back() {
         if (state.sending) viewModel.feedback("Đang gửi nội dung. Chờ thiết bị phản hồi trước khi rời màn hình.")
         else if (state.dirty) leave = true else onBack()
     }
     BackHandler { back() }
-    LaunchedEffect(doc != null) { if (doc != null && initialImport) { initialImport = false; selectImage() } }
-    Scaffold(topBar = {
-        MirageBar(if (doc == null) "Tạo thiết kế" else "Trình vẽ pixel", ::back) {
-            if (doc != null) {
-                IconButton(onClick = viewModel::undo, enabled = state.canUndo && !state.sending) { Icon(Icons.AutoMirrored.Filled.Undo, "Hoàn tác") }
-                IconButton(onClick = viewModel::redo, enabled = state.canRedo && !state.sending) { Icon(Icons.AutoMirrored.Filled.Redo, "Làm lại") }
-            }
-        }
-    }, bottomBar = {
-        if (doc != null) Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            MirageButton(if (state.sending) "Đang lưu lên LED…" else "Lưu lên thiết bị LED", viewModel::send, Modifier.fillMaxWidth().testTag("saveToLed"), enabled = state.connected && !state.sending && doc.width == 64 && doc.height == 32)
-            MirageButton("Lưu vào Gallery", viewModel::save, Modifier.fillMaxWidth().testTag("saveToGallery"), enabled = !state.sending, secondary = true)
-        }
-    }, containerColor = MirageBackground) { padding ->
-        Column(Modifier.testTag("studioScroll").padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (doc == null) {
-                Text("Bắt đầu từ từng điểm ảnh", style = MaterialTheme.typography.headlineSmall)
-                Text("Chọn độ phân giải cho thiết kế mới. Kích thước được giữ nguyên khi lưu bản nháp.", color = MirageMuted)
-                PixelDocument.sizes.forEach { (w, h) ->
-                    MirageCard(Modifier.fillMaxWidth().clickable { size = w to h }, if (size == w to h) MirageSage.copy(alpha = .3f) else Color.White) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = size == w to h, onClick = { size = w to h })
-                            Column { Text("$w × $h", style = MaterialTheme.typography.titleLarge); Text(if (w == h) "Canvas vuông" else "Canvas ngang · 2:1", color = MirageMuted) }
-                        }
-                        Box(Modifier.fillMaxWidth(.5f).aspectRatio(w.toFloat() / h).background(MirageSage.copy(alpha = .2f)).border(1.dp, MirageInk))
-                    }
-                }
-                MirageButton("Tạo canvas", { viewModel.create(size.first, size.second) }, Modifier.fillMaxWidth())
-                Text("Kiểm tra tương thích với thiết bị khi gửi. Giao thức hiện tại nhận ảnh 64×32.", color = MirageMuted)
-            } else {
-                if (doc.width == 64 && doc.height == 32) MirageCard {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(if (state.sending) "LIVE · Tạm dừng để lưu" else if (!state.connected) "LIVE · Chờ kết nối LED" else if (!state.liveEnabled) "LIVE · Đã tắt" else if (state.syncing) "LIVE · Đang đồng bộ…" else "LIVE · Đang bật", style = MaterialTheme.typography.titleMedium)
-                            Text("Nét vẽ gửi trực tiếp. Chọn Lưu lên thiết bị LED để giữ lại sau khi tắt nguồn.", style = MaterialTheme.typography.bodySmall, color = MirageMuted)
-                        }
-                        Switch(state.liveEnabled, viewModel::live, enabled = !state.sending, modifier = Modifier.testTag("liveToggle"))
-                    }
-                    state.liveError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                }
-                OutlinedButton(onClick = viewModel::clear, enabled = !state.sending, modifier = Modifier.fillMaxWidth().testTag("clearCanvas")) { Text("Xóa trắng bảng") }
-                OutlinedTextField(state.name, viewModel::name, label = { Text("Tên thiết kế") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("${doc.width} × ${doc.height} · ${if (state.connected) "Đã kết nối" else "Vẽ ngoại tuyến"}")
-                    IconToggleButton(checked = state.grid, onCheckedChange = { viewModel.grid() }) { Icon(Icons.Default.GridOn, "Lưới pixel") }
-                }
-                OutlinedButton(onClick = ::selectImage,
-                    enabled = !state.sending && !imageBusy,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("importFromGallery"),
-                    shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, MirageInk)) {
-                    Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Nhập ảnh từ thư viện")
-                }
-                InteractiveGrid(state, viewModel)
-                Text("Một ngón để vẽ · Hai ngón di chuyển và thu phóng", style = MaterialTheme.typography.bodySmall, color = MirageMuted)
-                MirageCard {
-                    Text("Cỡ cọ · ${state.brushSize} px")
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        (1..4).forEach { n -> FilterChip(selected = state.brushSize == n, onClick = { viewModel.brush(n) }, label = { Text("$n px") }) }
-                    }
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        state.palettes.flatMap { it.colors }.distinct().take(16).forEach { c -> ColorSwatch(c, c == state.color) { viewModel.color(c) } }
-                    }
-                }
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("Bút" to PixelTool.PEN, "Tẩy" to PixelTool.ERASER, "Hút màu" to PixelTool.PICKER).forEach { (label, tool) ->
-                        FilterChip(selected = state.tool == tool, onClick = { viewModel.tool(tool) }, label = { Text(label) })
-                    }
-                    AssistChip(onClick = { panel = "colors" }, label = { Text("Màu") })
-                    AssistChip(onClick = { panel = "tools" }, label = { Text("Công cụ") })
-                }
-                if (state.tool == PixelTool.PICKER) Text("Chạm pixel để lấy màu. Chọn Bút để hủy.")
-                if (state.mirror != MirrorMode.NONE) Text("Đối xứng: ${mirrorLabel(state.mirror)}", color = MirageMuted)
-                if (state.tool == PixelTool.TEXT) MirageButton("Chỉnh sửa khối chữ", { panel = "text" }, secondary = true)
-                if (!state.connected) Text("Bạn vẫn có thể vẽ và lưu vào Gallery. Kết nối LED để bật LIVE và lưu lên thiết bị.", color = MirageMuted)
-                if (doc.width != 64 || doc.height != 32) Text("Thiết kế này chỉ lưu nháp: giao thức hiện tại chỉ gửi được 64×32.", color = MirageMuted)
-            }
-            if (imageBusy) { CircularProgressIndicator(); Text("Đang đọc ảnh…") }
-            imageError?.let { Text(it, color = MaterialTheme.colorScheme.error); MirageButton("Chọn ảnh khác", ::selectImage, secondary = true) }
-            state.feedback?.let { Text(it, Modifier.miragePanel(MirageSage.copy(alpha = .15f)).padding(12.dp)) }
+    LaunchedEffect(doc != null) {
+        if (doc != null && initialImport) {
+            initialImport = false; selectImage()
         }
     }
-    if (leave) AlertDialog(onDismissRequest = { leave = false }, title = { Text("Rời bản vẽ?") }, text = { Text("Thay đổi chưa lưu sẽ bị mất. Chọn Lưu vào Gallery để giữ bản vẽ trên điện thoại. LIVE không tự lưu.") },
-        confirmButton = { TextButton(onClick = { leave = false; onBack() }) { Text("Bỏ thay đổi") } }, dismissButton = { TextButton(onClick = { leave = false }) { Text("Tiếp tục vẽ") } })
+
+    Scaffold(
+        containerColor = MirageBackground,
+        bottomBar = {
+            if (doc != null) Column {
+                CanvasBottomBar(
+                    state = state,
+                    vm = viewModel,
+                    onImport = { if (!state.sending && !imageBusy) selectImage() },
+                    onBack = ::back
+                )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(MirageBackground)
+                        .border(width = 1.dp, color = MirageInk.copy(alpha = .15f))
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${doc.width} × ${doc.height}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MirageInk,
+                        modifier = Modifier
+                            .border(1.dp, MirageInk, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                    BasicTextFieldFilename(state.name, viewModel::name)
+                }
+            }
+        }
+    ) { padding ->
+        Column(
+            Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .background(Ink)
+        ) {
+            LiveEditorTitleBar(syncing = state.syncing, onClose = ::back)
+            Row(Modifier.fillMaxSize()) {
+                CanvasSidebar(
+                    state = state, vm = viewModel,
+                    onMenu = { showMenu = true },
+                    onOptions = { panel = "options" },
+                    onColor = { panel = "colors" },
+                    onText = { panel = "text" }
+                )
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)
+                ) {
+                    if (doc != null) {
+                        InteractiveGrid(state, viewModel)
+
+                        if (state.tool == PixelTool.PICKER) Text(
+                            "Chạm pixel để lấy màu. Chọn Bút để hủy.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MirageMuted
+                        )
+                        if (state.tool == PixelTool.SELECT) Text(
+                            "Kéo để chọn vùng, dùng Cắt/Sao chép rồi chuyển sang Di chuyển.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MirageMuted
+                        )
+                        if (state.tool == PixelTool.MOVE && state.selection == null) Text(
+                            "Chọn một vùng trước khi di chuyển.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MirageMuted
+                        )
+                        if (state.mirror != MirrorMode.NONE) Text(
+                            "Đối xứng: ${mirrorLabel(state.mirror)}",
+                            color = MirageMuted,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        if (!state.connected) Text(
+                            "Bạn vẫn có thể vẽ và lưu vào Gallery. Kết nối LED để bật LIVE và lưu lên thiết bị.",
+                            color = MirageMuted,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        if (doc.width != 64 || doc.height != 32) Text(
+                            "Thiết kế này chỉ lưu nháp: giao thức hiện tại chỉ gửi được 64×32.",
+                            color = MirageMuted,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+
+                        if (imageBusy) Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp)); Text("Đang đọc ảnh…")
+                        }
+                        imageError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        state.feedback?.let {
+                            Text(it, Modifier.miragePanel(MirageSage.copy(alpha = .15f)).padding(12.dp))
+                        }
+                    } else {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(2f)
+                                .border(2.dp, Cream.copy(alpha = .3f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Chọn kích thước canvas để bắt đầu", color = Cream.copy(alpha = .5f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (doc == null) CreateCanvasDialog(
+        onDismiss = onBack,
+        onCreate = { w, h -> viewModel.create(w, h) }
+    )
+
+    if (leave) AlertDialog(
+        onDismissRequest = { leave = false },
+        title = { Text("Rời bản vẽ?") },
+        text = { Text("Thay đổi chưa lưu sẽ bị mất. Chọn Lưu vào Gallery để giữ bản vẽ trên điện thoại. LIVE không tự lưu.") },
+        confirmButton = {
+            TextButton(onClick = {
+                leave = false; onBack()
+            }) { Text("Bỏ thay đổi") }
+        },
+        dismissButton = { TextButton(onClick = { leave = false }) { Text("Tiếp tục vẽ") } })
+
+    if (showMenu) NavMenuSheet(
+        state = state,
+        onSendToLed = viewModel::send,
+        onSaveDraft = viewModel::save,
+        onExportToGallery = { showExportDialog = true },
+        onHome = onBack,
+        onProfile = onProfile,
+        close = { showMenu = false }
+    )
+
+    if (showExportDialog && doc != null) {
+        ExportDialog(
+            onDismiss = { showExportDialog = false },
+            onConfirm = { format ->
+                val success = ImageExportHelper.exportDocument(context, doc, state.name, format)
+                if (success) {
+                    viewModel.feedback("Đã xuất ảnh ra thư mục Pictures/CarLED thành công!")
+                } else {
+                    viewModel.feedback("Không thể xuất ảnh.")
+                }
+            }
+        )
+    }
+
     if (doc != null) when (panel) {
         "colors" -> PaletteDialog(state, viewModel) { panel = null }
-        "tools" -> StudioToolsSheet(state, viewModel, close = { panel = null },
-            openText = { viewModel.tool(PixelTool.TEXT); panel = "text" },
-            importImage = { panel = null; selectImage() })
+        "options" -> CanvasOptionsSheet(state, viewModel) { panel = null }
         "text" -> PixelTextDialog(doc, state.color, viewModel) { panel = null }
-        "import" -> image?.let { ImportImageDialog(it, doc, { viewModel.importPixels(it); panel = null }, { panel = null }, ::selectImage) }
+        "import" -> image?.let {
+            ImportImageDialog(
+                it,
+                doc,
+                { bmp ->
+                    val rasterizedPixels = rasterizeBitmapToPixels(bmp, doc.width, doc.height)
+                    viewModel.importPixels(rasterizedPixels)
+                    panel = null
+                },
+                { panel = null },
+                ::selectImage
+            )
+        }
     }
 }
 
-private fun mirrorLabel(m: MirrorMode) = when(m) { MirrorMode.NONE -> "Tắt"; MirrorMode.HORIZONTAL -> "Trái–phải"; MirrorMode.VERTICAL -> "Trên–dưới"; MirrorMode.BOTH -> "Cả hai trục" }
+private fun mirrorLabel(m: MirrorMode) = when (m) {
+    MirrorMode.NONE -> "Tắt"; MirrorMode.HORIZONTAL -> "Trái–phải"; MirrorMode.VERTICAL -> "Trên–dưới"; MirrorMode.BOTH -> "Cả hai trục"
+}
+
+@Composable
+private fun LiveEditorTitleBar(syncing: Boolean, onClose: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .background(Cream)
+            .border(2.dp, Ink),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .padding(start = 10.dp)
+                .size(16.dp)
+                .clip(CircleShape)
+                .background(Green)
+                .border(1.5.dp, Ink, CircleShape)
+        )
+        Text(
+            "Live editor",
+            color = Ink,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .padding(start = 8.dp)
+                .weight(1f)
+        )
+        Icon(
+            Icons.Default.Sync,
+            contentDescription = if (syncing) "Đang đồng bộ" else null,
+            tint = Green.copy(alpha = if (syncing) 1f else 0.4f),
+            modifier = Modifier
+                .padding(end = 10.dp)
+                .size(18.dp)
+        )
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .width(48.dp)
+                .background(Green)
+                .border(1.5.dp, Ink)
+                .clickable(onClick = onClose),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("X", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun BasicTextFieldFilename(value: String, onChange: (String) -> Unit) {
+    var editing by remember { mutableStateOf(false) }
+    if (editing) {
+        OutlinedTextField(
+            value = value, onValueChange = onChange, singleLine = true,
+            modifier = Modifier
+                .widthIn(max = 180.dp)
+                .testTag("filenameField"),
+            textStyle = MaterialTheme.typography.labelLarge,
+            trailingIcon = {
+                IconButton(onClick = { editing = false }) {
+                    Icon(
+                        Icons.Default.Check,
+                        "Xong"
+                    )
+                }
+            }
+        )
+    } else {
+        Text(
+            value.ifBlank { "Filename" },
+            style = MaterialTheme.typography.labelLarge,
+            color = MirageInk,
+            modifier = Modifier
+                .clickable { editing = true }
+                .testTag("filenameLabel")
+        )
+    }
+}
 
 @Composable
 private fun InteractiveGrid(state: StudioState, vm: StudioViewModel) {
@@ -172,52 +396,135 @@ private fun InteractiveGrid(state: StudioState, vm: StudioViewModel) {
     val pixels = remember(doc) { doc.composite() }
     var zoom by remember(doc.width, doc.height) { mutableFloatStateOf(1f) }
     var pan by remember(doc.width, doc.height) { mutableStateOf(Offset.Zero) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Canvas(Modifier.testTag("pixelCanvas").fillMaxWidth().aspectRatio(doc.width.toFloat() / doc.height).clipToBounds().border(2.dp, MirageInk).background(Color(0xff18241c))
-            .pointerInput(doc.width, doc.height) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false); down.consume()
-                    fun position(point: Offset): Pair<Int, Int> {
-                        val cell = size.width.toFloat() / doc.width * zoom
-                        return floor((point.x - pan.x) / cell).toInt() to floor((point.y - pan.y) / cell).toInt()
-                    }
-                    val p = position(down.position); vm.down(p.first, p.second)
-                    var transforming = false
-                    try {
-                        do {
-                            val event = awaitPointerEvent()
-                            if (event.changes.count { it.pressed } > 1) {
-                                if (!transforming) { vm.end(cancel = true); transforming = true }
-                                val center = event.calculateCentroid(useCurrent = false)
-                                val previousZoom = zoom
-                                zoom = (zoom * event.calculateZoom()).coerceIn(1f, 8f)
-                                pan = center - (center - pan) * (zoom / previousZoom) + event.calculatePan()
-                                pan = Offset(pan.x.coerceIn(size.width * (1 - zoom), 0f), pan.y.coerceIn(size.height * (1 - zoom), 0f))
-                            } else if (!transforming) event.changes.firstOrNull()?.let { change ->
-                                val at = position(change.position); vm.move(at.first, at.second)
-                            }
-                            event.changes.forEach { it.consume() }
-                        } while (event.changes.any { it.pressed })
-                        if (!transforming) vm.end()
-                    } finally { vm.end(cancel = true) }
-                }
-            }) {
-            val cell = size.width / doc.width * zoom
-            for (y in 0 until doc.height) for (x in 0 until doc.width) {
-                val p = pixels[y * doc.width + x]
-                val pos = Offset(pan.x + x * cell, pan.y + y * cell)
-                val emptyColor = if ((x + y) % 2 == 0) Color(0xff24372b) else Color(0xff2d4435)
-                drawRect(if (p == 0) emptyColor else Color(p), pos, Size(cell, cell))
-                if (state.grid && cell >= 3) drawRect(Color(0xff56655b), pos, Size(cell, cell), style = Stroke(.5f))
+
+    val bitmap = remember(doc.width, doc.height) {
+        android.graphics.Bitmap.createBitmap(doc.width, doc.height, android.graphics.Bitmap.Config.ARGB_8888)
+    }
+
+    remember(pixels, doc.width, doc.height) {
+        val argbPixels = IntArray(pixels.size) { i ->
+            val p = pixels[i]
+            if (p == 0) {
+                val x = i % doc.width
+                val y = i / doc.width
+                if ((x + y) % 2 == 0) 0xff24372b.toInt() else 0xff2d4435.toInt()
+            } else {
+                p
             }
-            if (state.mirror == MirrorMode.HORIZONTAL || state.mirror == MirrorMode.BOTH) drawLine(MirageSage, Offset(pan.x + doc.width * cell / 2, 0f), Offset(pan.x + doc.width * cell / 2, size.height), 2f)
-            if (state.mirror == MirrorMode.VERTICAL || state.mirror == MirrorMode.BOTH) drawLine(MirageSage, Offset(0f, pan.y + doc.height * cell / 2), Offset(size.width, pan.y + doc.height * cell / 2), 2f)
+        }
+        bitmap.setPixels(argbPixels, 0, doc.width, 0, 0, doc.width, doc.height)
+        true
+    }
+    val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Canvas(
+            Modifier
+                .testTag("pixelCanvas")
+                .fillMaxWidth()
+                .aspectRatio(doc.width.toFloat() / doc.height)
+                .clipToBounds()
+                .border(2.dp, MirageInk)
+                .background(Color(0xff18241c))
+                .pointerInput(doc.width, doc.height) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false); down.consume()
+
+                        fun position(point: Offset, currentCellSize: Float): Pair<Int, Int> {
+                            return floor((point.x - pan.x) / currentCellSize).toInt() to floor((point.y - pan.y) / currentCellSize).toInt()
+                        }
+
+                        val initialCellSize = size.width.toFloat() / doc.width * zoom
+                        val p = position(down.position, initialCellSize)
+                        vm.down(p.first, p.second)
+                        var transforming = false
+                        try {
+                            do {
+                                val event = awaitPointerEvent()
+                                val activeCellSize = size.width.toFloat() / doc.width * zoom
+                                if (event.changes.count { it.pressed } > 1) {
+                                    if (!transforming) {
+                                        vm.end(cancel = true); transforming = true
+                                    }
+                                    val center = event.calculateCentroid(useCurrent = false)
+                                    val previousZoom = zoom
+                                    zoom = (zoom * event.calculateZoom()).coerceIn(0.5f, 16f)
+
+                                    // Allow free panning like Clip Studio without clamping bounds rigidly to edges
+                                    pan = center - (center - pan) * (zoom / previousZoom) + event.calculatePan()
+                                } else if (!transforming) event.changes.firstOrNull()
+                                    ?.let { change ->
+                                        val at = position(change.position, activeCellSize)
+                                        vm.move(at.first, at.second)
+                                    }
+                                event.changes.forEach { it.consume() }
+                            } while (event.changes.any { it.pressed })
+                            if (!transforming) vm.end()
+                        } finally {
+                            vm.end(cancel = true)
+                        }
+                    }
+                }) {
+            val cell = size.width / doc.width * zoom
+
+            drawImage(
+                image = imageBitmap,
+                dstOffset = IntOffset(pan.x.toInt(), pan.y.toInt()),
+                dstSize = IntSize((doc.width * cell).toInt(), (doc.height * cell).toInt()),
+                filterQuality = FilterQuality.None
+            )
+            if (state.grid && cell >= 3) {
+                val gridColor = Color(0xff56655b)
+                for (x in 0..doc.width) {
+                    val xPos = pan.x + x * cell
+                    drawLine(gridColor, Offset(xPos, pan.y), Offset(xPos, pan.y + doc.height * cell), strokeWidth = 0.5f)
+                }
+                for (y in 0..doc.height) {
+                    val yPos = pan.y + y * cell
+                    drawLine(gridColor, Offset(pan.x, yPos), Offset(pan.x + doc.width * cell, yPos), strokeWidth = 0.5f)
+                }
+            }
+
+            if (state.mirror == MirrorMode.HORIZONTAL || state.mirror == MirrorMode.BOTH) drawLine(
+                MirageSage,
+                Offset(pan.x + doc.width * cell / 2, 0f),
+                Offset(pan.x + doc.width * cell / 2, size.height),
+                2f
+            )
+            if (state.mirror == MirrorMode.VERTICAL || state.mirror == MirrorMode.BOTH) drawLine(
+                MirageSage,
+                Offset(0f, pan.y + doc.height * cell / 2),
+                Offset(size.width, pan.y + doc.height * cell / 2),
+                2f
+            )
             if (state.tool == PixelTool.TEXT) doc.texts.forEach { b ->
-                drawRect(Color.White, Offset(pan.x + b.x * cell, pan.y + b.y * cell), Size((b.text.length * (b.glyphWidth + 1) - 1) * cell, b.glyphHeight * cell), style = Stroke(2f))
+                drawRect(
+                    Color.White,
+                    Offset(pan.x + b.x * cell, pan.y + b.y * cell),
+                    Size((b.text.length * (b.glyphWidth + 1) - 1) * cell, b.glyphHeight * cell),
+                    style = Stroke(2f)
+                )
+            }
+            state.selection?.let { sel ->
+                val left = pan.x + sel.left * cell
+                val top = pan.y + sel.top * cell
+                val w = (sel.right - sel.left + 1) * cell
+                val h = (sel.bottom - sel.top + 1) * cell
+                drawRect(
+                    Color.White,
+                    Offset(left, top),
+                    Size(w, h),
+                    style = Stroke(2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f)))
+                )
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Thu phóng ${(zoom * 100).toInt()}%", Modifier.weight(1f), color = MirageMuted)
+            Text(
+                "Thu phóng ${(zoom * 100).toInt()}%",
+                Modifier.weight(1f),
+                color = MirageMuted,
+                style = MaterialTheme.typography.bodySmall
+            )
             TextButton(onClick = { zoom = 1f; pan = Offset.Zero }) { Text("Căn giữa") }
         }
     }
