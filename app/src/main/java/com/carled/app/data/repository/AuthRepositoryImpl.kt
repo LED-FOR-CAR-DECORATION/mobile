@@ -10,6 +10,7 @@ import com.carled.app.data.remote.dto.GoogleAuthRequest
 import com.carled.app.data.remote.dto.LoginData
 import com.carled.app.data.remote.dto.LoginRequest
 import com.carled.app.data.remote.dto.LoginResponse
+import com.carled.app.data.remote.dto.LogoutRequest
 import com.carled.app.data.remote.dto.RefreshTokenRequest
 import com.carled.app.data.remote.dto.RegisterRequest
 import com.carled.app.data.remote.dto.ResendVerificationRequest
@@ -139,10 +140,22 @@ class AuthRepositoryImpl(
 
     override suspend fun logout(): Resource<Unit> {
         return try {
-            val response = apiService.logout()
+            val token = userPreferences.getAuthToken()?.takeIf { it.isNotBlank() }
+            val refreshToken = userPreferences.getRefreshToken().orEmpty()
+
+            val response = if (token != null && refreshToken.isNotBlank()) {
+                apiService.logout("Bearer $token", LogoutRequest(refreshToken))
+            } else {
+                null
+            }
+
             clearSession()
-            if (response.isSuccessful) Resource.Success(Unit)
-            else Resource.Error(parseErrorBody(response, "Đăng xuất gặp sự cố phía máy chủ"))
+
+            if (response == null || response.isSuccessful) {
+                Resource.Success(Unit)
+            } else {
+                Resource.Error(parseErrorBody(response, "Đăng xuất gặp sự cố phía máy chủ"))
+            }
         } catch (e: Exception) {
             clearSession()
             Resource.Success(Unit)
@@ -252,4 +265,5 @@ class AuthRepositoryImpl(
             defaultMessage
         }
     }
+
 }

@@ -4,27 +4,25 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.carled.app.domain.model.*
 import com.carled.app.presentation.components.*
 import com.carled.app.presentation.theme.*
 
 @Composable
 fun MirageControlScreen(
     vm: ControlViewModel,
+    ownedDevices: OwnedDevicesViewModel,
     back: () -> Unit,
     scanner: () -> Unit,
-    openPanelControl: (String) -> Unit = {},
     openClaimDevice: () -> Unit = {},
-    userId: String = ""
+    openDeviceInfo: (String) -> Unit = {}
 ) {
-    val connectionState by vm.connectionState.collectAsState()
-    val ledState by vm.ledState.collectAsState()
     val feedbackMessage by vm.feedbackMessage.collectAsState()
-    val device = connectionState as? ConnectionState.Connected
-    val firmware = remember { MockDeviceInventory.firmwareReleases() }
+    val devicesState by ownedDevices.uiState.collectAsState()
     var help by remember { mutableStateOf(false) }
 
     Box(
@@ -39,25 +37,24 @@ fun MirageControlScreen(
             onClose = back,
             modifier = Modifier.fillMaxSize()
         ) {
-            DeviceSection(title = "Owned device:", onAdd = openClaimDevice) {
-                if (device == null) {
-                    EmptyRow(
-                        if (connectionState is ConnectionState.Connecting) "Đang kết nối…"
-                        else "Chưa có thiết bị kết nối. Nhấn + để thêm."
-                    )
-                } else {
-                    ConnectedPanelCard(
-                        name = device.deviceName,
-                        powerOn = ledState.isPowerOn,
-                        mode = ledState.currentMode.displayName,
-                        address = device.deviceAddress,
-                        onOpenControl = { openPanelControl("current") }
-                    )
+            DeviceSection(title = "Owned devices", onAdd = openClaimDevice) {
+                when (val state = devicesState) {
+                    is OwnedDevicesUiState.Loading -> EmptyRow("Đang tải danh sách thiết bị…")
+                    is OwnedDevicesUiState.Error -> EmptyRow(state.message)
+                    is OwnedDevicesUiState.Loaded -> {
+                        if (state.devices.isEmpty()) {
+                            EmptyRow("Chưa có thiết bị nào. Nhấn + để quét mã QR và thêm thiết bị.")
+                        } else {
+                            state.devices.forEach { device ->
+                                OwnedDeviceRow(
+                                    label = device.deviceName,
+                                    lastUpdated = device.lastUpdated ?: "—",
+                                    onOpenInfo = { openDeviceInfo(device.id) }
+                                )
+                            }
+                        }
+                    }
                 }
-            }
-
-            DeviceSection(title = "Firmware manager:") {
-                firmware.forEach { release -> FirmwareReleaseCard(release) }
             }
 
             GuideRow(text = "Hướng dẫn Bluetooth", onClick = { help = true })
@@ -71,5 +68,28 @@ fun MirageControlScreen(
             text = { Text("Bật nguồn LED và Bluetooth trên điện thoại. Android 12 trở lên cần quyền Thiết bị ở gần; Android cũ hơn cần quyền Vị trí để quét BLE. Đặt điện thoại gần LED rồi chọn Thêm thiết bị. Điều khiển BLE không cần Internet.") },
             confirmButton = { TextButton(onClick = { help = false }) { Text("Đã hiểu") } }
         )
+    }
+}
+
+
+@Composable
+private fun OwnedDeviceRow(
+    label: String,
+    lastUpdated: String,
+    onOpenInfo: () -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .flatSurface(color = Cream)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, color = Ink, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text("Last updated: $lastUpdated", color = MirageMuted, fontSize = 12.sp)
+        }
+        Spacer(Modifier.width(8.dp))
+        MirageButton("Device info", onOpenInfo, secondary = true)
     }
 }

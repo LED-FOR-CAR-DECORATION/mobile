@@ -2,10 +2,14 @@ package com.carled.app.data.remote
 
 import com.carled.app.data.remote.dto.ClaimDeviceRequest
 import com.carled.app.data.remote.dto.ClaimDeviceResponse
+import com.carled.app.data.remote.dto.ApiResponse
+import com.carled.app.data.remote.dto.DeviceDto
+import com.carled.app.data.remote.dto.DeviceDetailDto
 import com.carled.app.data.remote.dto.ForgotPasswordRequest
 import com.carled.app.data.remote.dto.GoogleAuthRequest
 import com.carled.app.data.remote.dto.LoginRequest
 import com.carled.app.data.remote.dto.LoginResponse
+import com.carled.app.data.remote.dto.LogoutRequest
 import com.carled.app.data.remote.dto.ProductDto
 import com.carled.app.data.remote.dto.RefreshTokenRequest
 import com.carled.app.data.remote.dto.RegisterRequest
@@ -20,6 +24,7 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 interface ApiService {
 
@@ -30,7 +35,6 @@ interface ApiService {
     @POST("api/auth/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 
-    // Returns 201 + RegisterResponse (no token — user must verify email first)
     @POST("api/auth/register")
     suspend fun register(@Body request: RegisterRequest): Response<RegisterResponse>
 
@@ -59,8 +63,6 @@ interface ApiService {
     // Users
     // -------------------------------------------------------------------------
 
-    // No auth interceptor is configured on OkHttpClient (see ServiceLocator),
-    // so the bearer token has to be passed explicitly on every call that needs it.
     @GET("api/users/me")
     suspend fun getCurrentUserProfile(
         @Header("Authorization") authorization: String
@@ -80,11 +82,38 @@ interface ApiService {
     // Devices
     // -------------------------------------------------------------------------
 
-    // Verifies the signed QR payload (sn/mac/sig) and attaches the device to
-    // whichever account the bearer token identifies.
     @POST("api/devices/claim")
     suspend fun claimDevice(
         @Header("Authorization") authorization: String,
         @Body request: ClaimDeviceRequest
     ): Response<ClaimDeviceResponse>
+
+    /**
+     * GET /api/devices
+     * Retrieves the paginated list of bound devices.
+     * Default page is set to 0 to satisfy server validation: page >= 0.
+     */
+    @GET("api/devices")
+    suspend fun getDevices(
+        @Header("Authorization") authorization: String,
+        @Query("page") page: Int = 0,
+        @Query("size") size: Int = 20
+    ): Response<ApiResponse<List<DeviceDto>>>
+
+    /**
+     * GET /api/devices/{id}
+     * Retrieves detailed information for a specific device by its numeric ID (> 0).
+     */
+    @GET("api/devices/{id}")
+    suspend fun getDeviceById(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long
+    ): Response<ApiResponse<DeviceDetailDto>>
+
+    @POST("api/auth/logout")
+    suspend fun logout(
+        @Header("Authorization") authorization: String,
+        @Body request: LogoutRequest
+    ): Response<Unit>
 }
+

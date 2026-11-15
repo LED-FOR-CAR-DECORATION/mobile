@@ -54,6 +54,7 @@ import com.carled.app.presentation.components.WindowFrame
 import com.carled.app.presentation.components.flatSurface
 import com.carled.app.presentation.screens.control.ControlViewModel
 import com.carled.app.presentation.screens.control.MirageControlScreen
+import com.carled.app.presentation.screens.control.OwnedDevicesViewModel
 import com.carled.app.presentation.screens.profile.MirageProfileScreen
 import com.carled.app.presentation.screens.scan.ScanViewModel
 import com.carled.app.presentation.theme.Cream
@@ -77,12 +78,13 @@ private object MockLetterProfileStore {
 }
 
 @Composable
-fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: User?,
+fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, ownedDevices: OwnedDevicesViewModel, user: User?,
                      openScan: () -> Unit, openControl: () -> Unit, openCanvas: (String?) -> Unit,
                      openMarquee: () -> Unit, openUpload: () -> Unit, logout: () -> Unit,
                      openEffect: () -> Unit = {}, openCharacter: (String) -> Unit = {},
                      openEditProfile: () -> Unit = {}, openLetterProfile: (String) -> Unit = {},
                      openClaimDevice: () -> Unit = {},
+                     openDeviceInfo: (String) -> Unit = {},
                      initialTab: Int = HOME_TAB_HOME) {
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
     var confirmDisconnect by remember { mutableStateOf(false) }
@@ -209,11 +211,11 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, user: Us
                 Box(Modifier.padding(padding).fillMaxSize()) {
                     MirageControlScreen(
                         vm = control,
+                        ownedDevices = ownedDevices,
                         back = { tab = HOME_TAB_HOME },
                         scanner = openScan,
-                        openPanelControl = { openControl() },
                         openClaimDevice = openClaimDevice,
-                        userId = user?.id ?: ""
+                        openDeviceInfo = openDeviceInfo
                     )
                 }
             }

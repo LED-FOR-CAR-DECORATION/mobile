@@ -123,3 +123,6 @@ data class ValidationDetail(
     val field: String? = null,
     val message: String? = null
 )
+data class LogoutRequest(
+    val refreshToken: String
+)

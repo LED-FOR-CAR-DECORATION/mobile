@@ -13,10 +13,29 @@ class UserPreferences(context: Context) {
         private const val KEY_USER_ID         = "user_id"
         private const val KEY_USER_EMAIL      = "user_email"
         private const val KEY_LAST_DEVICE_MAC = "last_device_mac"
+        private const val KEY_CACHED_DEVICES = "cached_devices_json"
+        private const val PREFIX_CACHED_DEVICE_DETAIL = "cached_device_detail_"
     }
 
     // --- Access token ---
 
+
+    fun saveCachedDevices(json: String) {
+        prefs.edit().putString(KEY_CACHED_DEVICES, json).apply()
+    }
+
+    fun getCachedDevices(): String? {
+        return prefs.getString(KEY_CACHED_DEVICES, null)
+    }
+
+    // --- Device Detail Caching ---
+    fun saveCachedDeviceDetail(deviceId: Long, json: String) {
+        prefs.edit().putString("$PREFIX_CACHED_DEVICE_DETAIL$deviceId", json).apply()
+    }
+
+    fun getCachedDeviceDetail(deviceId: Long): String? {
+        return prefs.getString("$PREFIX_CACHED_DEVICE_DETAIL$deviceId", null)
+    }
     fun saveAuthToken(token: String?) {
         prefs.edit().putString(KEY_AUTH_TOKEN, token).apply()
     }
@@ -57,4 +76,5 @@ class UserPreferences(context: Context) {
     fun clear() {
         prefs.edit().clear().apply()
     }
+
 }

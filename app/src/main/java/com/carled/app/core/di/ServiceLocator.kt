@@ -8,10 +8,12 @@ import com.carled.app.data.remote.ApiService
 import com.carled.app.data.repository.AuthRepositoryImpl
 import com.carled.app.data.repository.BleDeviceRepositoryImpl
 import com.carled.app.data.repository.DeviceClaimRepositoryImpl
+import com.carled.app.data.repository.DeviceRepositoryImpl
 import com.carled.app.data.repository.ProductRepositoryImpl
 import com.carled.app.domain.repository.AuthRepository
 import com.carled.app.domain.repository.BleDeviceRepository
 import com.carled.app.domain.repository.DeviceClaimRepository
+import com.carled.app.domain.repository.DeviceRepository
 import com.carled.app.domain.repository.ProductRepository
 import com.carled.app.domain.usecase.auth.GoogleAuthUseCase
 import com.carled.app.domain.usecase.ble.*
@@ -95,14 +97,22 @@ object ServiceLocator {
         ProductRepositoryImpl(apiService, gson)
     }
 
+    // Same token source + header format AuthRepositoryImpl uses for
+    // apiService.getCurrentUserProfile("Bearer $token").
+    private val deviceAuthHeaderProvider: suspend () -> String? = {
+        userPreferences.getAuthToken()?.takeIf { it.isNotBlank() }?.let { token -> "Bearer $token" }
+    }
+
     val deviceClaimRepository: DeviceClaimRepository by lazy {
-        DeviceClaimRepositoryImpl(
+        DeviceClaimRepositoryImpl(api = apiService, authHeaderProvider = deviceAuthHeaderProvider)
+    }
+
+    val deviceRepository: DeviceRepository by lazy {
+        DeviceRepositoryImpl(
             api = apiService,
-            // Same token source + header format AuthRepositoryImpl uses for
-            // apiService.getCurrentUserProfile("Bearer $token").
-            authHeaderProvider = {
-                userPreferences.getAuthToken()?.takeIf { it.isNotBlank() }?.let { token -> "Bearer $token" }
-            }
+            userPreferences = userPreferences,
+            gson = gson,
+            authHeaderProvider = deviceAuthHeaderProvider
         )
     }
 
