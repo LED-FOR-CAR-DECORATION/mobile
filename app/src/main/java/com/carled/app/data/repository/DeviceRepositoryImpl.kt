@@ -44,14 +44,16 @@ class DeviceRepositoryImpl(
                     userPreferences.saveCachedDevices(gson.toJson(domainModels))
 
                     return Resource.Success(domainModels)
+                } else {
+                    // Include response.code() to easily diagnose 401, 403, 500, etc.
+                    return loadFromCacheOrError(
+                        "Không thể tải danh sách thiết bị từ máy chủ (lỗi ${response.code()})."
+                    )
                 }
             }
 
-            // If token is missing or network call failed, try loading from local cache
-            loadFromCacheOrError(
-                if (authHeader == null) "Bạn cần đăng nhập trước khi xem danh sách thiết bị."
-                else "Không thể tải danh sách thiết bị từ máy chủ."
-            )
+            // If token is missing, try loading from local cache
+            loadFromCacheOrError("Bạn cần đăng nhập trước khi xem danh sách thiết bị.")
         } catch (e: IOException) {
             // Offline fallback: load from local storage
             loadFromCacheOrError("Không có kết nối mạng. Đang hiển thị dữ liệu lưu trữ cục bộ.")
@@ -77,6 +79,11 @@ class DeviceRepositoryImpl(
                         userPreferences.saveCachedDeviceDetail(deviceId, gson.toJson(body))
                         return Resource.Success(body)
                     }
+                } else {
+                    return loadDetailFromCacheOrError(
+                        deviceId,
+                        "Không thể tải thông tin chi tiết thiết bị (lỗi ${response.code()})."
+                    )
                 }
             }
 

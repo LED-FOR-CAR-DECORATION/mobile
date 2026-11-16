@@ -69,8 +69,12 @@ class LoginViewModel(
 
     fun login(onSuccess: () -> Unit) {
         val state = _uiState.value
+        // Trim whitespace and hidden newlines from autofill/paste
+        val trimmedEmail = state.email.trim()
+        val trimmedPassword = state.password.trim()
+
         authenticate(onSuccess) {
-            loginUseCase(state.email, state.password)
+            loginUseCase(trimmedEmail, trimmedPassword)
         }
     }
 
@@ -88,9 +92,9 @@ class LoginViewModel(
             }
 
             when (val result = registerUseCase(
-                email = state.email,
-                password = state.password,
-                confirmPassword = state.confirmPassword,
+                email = state.email.trim(),
+                password = state.password.trim(),
+                confirmPassword = state.confirmPassword.trim(),
                 acceptTerms = state.acceptTerms
             )) {
                 is Resource.Success -> {
@@ -134,7 +138,7 @@ class LoginViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isVerifying = true, verifyError = null) }
 
-            when (val result = verifyEmailUseCase(email, state.verificationCode)) {
+            when (val result = verifyEmailUseCase(email, state.verificationCode.trim())) {
                 is Resource.Success -> {
                     _uiState.update {
                         it.copy(
@@ -222,7 +226,7 @@ class LoginViewModel(
                             it.copy(
                                 isLoading = false,
                                 showVerifyDialog = true,
-                                verificationEmail = state.email,
+                                verificationEmail = state.email.trim(),
                                 verificationCode = "",
                                 verifyError = null,
                                 errorMessage = null
