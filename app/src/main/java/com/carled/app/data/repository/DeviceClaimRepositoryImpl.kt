@@ -21,12 +21,7 @@ class DeviceClaimRepositoryImpl(
         return try {
             val response = api.claimDevice(
                 authorization = authHeader,
-                request = ClaimDeviceRequest(
-                    v = payload.version,
-                    sn = payload.serialNumber,
-                    mac = payload.macAddress,
-                    sig = payload.signature
-                )
+                request = ClaimDeviceRequest(qrPayload = payload.qrPayload)
             )
 
             if (response.isSuccessful) {
@@ -34,23 +29,28 @@ class DeviceClaimRepositoryImpl(
                     ?: return Resource.Error("Phản hồi trống từ máy chủ.")
                 Resource.Success(
                     ClaimedDevice(
-                        id = body.id,
+                        id = body.deviceId.toString(),
                         deviceName = body.deviceName,
-                        macAddress = body.mac,
-                        serialNumber = body.sn
+                        macAddress = body.macAddress,
+                        serialNumber = body.serialNumber
                     )
                 )
             } else {
                 val message = when (response.code()) {
-                    401, 403 -> "Mã QR không hợp lệ hoặc đã được dùng để xác nhận thiết bị khác."
+                    400 -> "Mã QR thiết bị không hợp lệ hoặc bị sai chữ ký."
+                    401 -> "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+                    403 -> "Thiết bị này không thuộc đơn hàng của tài khoản hiện tại."
                     404 -> "Không tìm thấy thiết bị với mã này."
+                    409 -> "Thiết bị đã được kích hoạt hoặc đơn hàng chưa hoàn tất giao hàng."
                     else -> "Không thể xác nhận thiết bị (lỗi máy chủ ${response.code()})."
                 }
                 Resource.Error(message)
             }
         } catch (e: IOException) {
             Resource.Error("Không có kết nối mạng. Kiểm tra Internet và thử lại.", e)
-        } catch (e: CancellationException) { throw e } catch (e: Exception) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
             Resource.Error(e.message ?: "Đã xảy ra lỗi khi xác nhận thiết bị.", e)
         }
     }
