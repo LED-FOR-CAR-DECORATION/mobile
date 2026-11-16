@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val stagingApiUrl = "https://lumintra-backend-staging.bluedesert-a7b94014.eastasia.azurecontainerapps.io/"
+val releaseApiUrl = providers.gradleProperty("releaseApiUrl").getOrElse(stagingApiUrl).trimEnd('/') + "/"
+
 android {
     namespace = "com.carled.app"
     compileSdk = 37
@@ -23,7 +26,7 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "BASE_URL", "\"https://lumintra-backend-staging.bluedesert-a7b94014.eastasia.azurecontainerapps.io/\"")
+            buildConfigField("String", "BASE_URL", "\"$stagingApiUrl\"")
         }
         release {
             isMinifyEnabled = false
@@ -31,7 +34,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("String", "BASE_URL", "\"https://api.yourproduction.com/\"")
+            buildConfigField("String", "BASE_URL", "\"$releaseApiUrl\"")
         }
     }
 
