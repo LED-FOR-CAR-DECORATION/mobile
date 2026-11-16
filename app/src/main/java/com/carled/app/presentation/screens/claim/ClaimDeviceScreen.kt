@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.OptIn
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -88,32 +90,32 @@ fun ClaimDeviceScreen(
             ) {
                 val state = uiState
 
-                Box(
-                    Modifier
-                        .size(260.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .dashedBorder(color = Green, cornerRadius = 16.dp)
-                ) {
-                    if (hasCameraPermission) {
-                        CameraPreview(
-                            enabled = state is ClaimDeviceUiState.Scanning,
-                            onBarcodeDetected = vm::onQrCodeDetected
-                        )
-                    } else {
-                        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                            Text(
-                                "Cần quyền Camera để quét mã QR thiết bị.",
-                                textAlign = TextAlign.Center,
-                                color = MirageMuted
+                // Only show the camera viewfinder box while actively scanning
+                if (state is ClaimDeviceUiState.Scanning) {
+                    Box(
+                        Modifier
+                            .size(260.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .dashedBorder(color = Green, cornerRadius = 16.dp)
+                    ) {
+                        if (hasCameraPermission) {
+                            CameraPreview(
+                                enabled = true,
+                                onBarcodeDetected = vm::onQrCodeDetected
                             )
+                        } else {
+                            Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                                Text(
+                                    "Cần quyền Camera để quét mã QR thiết bị.",
+                                    textAlign = TextAlign.Center,
+                                    color = MirageMuted
+                                )
+                            }
                         }
                     }
                 }
 
-                // Matches the "Bind Device" CTA in the mockup. Scanning itself is
-                // automatic (the analyzer above fires as soon as a code is in frame);
-                // this button's only real job is re-requesting the camera permission
-                // if it was denied. Repurpose onClick if you want a manual trigger instead.
+                // Matches the "Bind Device" CTA in the mockup...
                 BindDeviceButton(
                     onClick = { if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA) }
                 )
@@ -153,6 +155,7 @@ fun ClaimDeviceScreen(
     }
 }
 
+@OptIn(ExperimentalGetImage::class)
 @Composable
 private fun CameraPreview(enabled: Boolean, onBarcodeDetected: (String) -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current

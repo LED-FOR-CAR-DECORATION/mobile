@@ -37,29 +37,36 @@ fun MirageControlScreen(
             onClose = back,
             modifier = Modifier.fillMaxSize()
         ) {
-            DeviceSection(title = "Owned devices", onAdd = openClaimDevice) {
-                when (val state = devicesState) {
-                    is OwnedDevicesUiState.Loading -> EmptyRow("Đang tải danh sách thiết bị…")
-                    is OwnedDevicesUiState.Error -> EmptyRow(state.message)
-                    is OwnedDevicesUiState.Loaded -> {
-                        if (state.devices.isEmpty()) {
-                            EmptyRow("Chưa có thiết bị nào. Nhấn + để quét mã QR và thêm thiết bị.")
-                        } else {
-                            state.devices.forEach { device ->
-                                OwnedDeviceRow(
-                                    label = device.deviceName,
-                                    lastUpdated = device.lastUpdated ?: "—",
-                                    onOpenInfo = { openDeviceInfo(device.id) }
-                                )
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                DeviceSection(title = "Owned devices", onAdd = openClaimDevice) {
+                    when (val state = devicesState) {
+                        is OwnedDevicesUiState.Loading -> EmptyRow("Đang tải danh sách thiết bị…")
+                        is OwnedDevicesUiState.Error -> EmptyRow(state.message)
+                        is OwnedDevicesUiState.Loaded -> {
+                            if (state.devices.isEmpty()) {
+                                EmptyRow("Chưa có thiết bị nào. Nhấn + để quét mã QR và thêm thiết bị.")
+                            } else {
+                                state.devices.forEach { device ->
+                                    OwnedDeviceRow(
+                                        label = device.deviceName,
+                                        serialNumber = device.serialNumber ?: "—",
+                                        onOpenInfo = { openDeviceInfo(device.id) }
+                                    )
+                                }
                             }
                         }
                     }
                 }
+
+                GuideRow(text = "Hướng dẫn Bluetooth", onClick = { help = true })
+
+                feedbackMessage?.let { Text(it, color = MirageMuted, fontSize = 13.sp) }
             }
-
-            GuideRow(text = "Hướng dẫn Bluetooth", onClick = { help = true })
-
-            feedbackMessage?.let { Text(it, color = MirageMuted, fontSize = 13.sp) }
         }
 
         if (help) AlertDialog(
@@ -75,7 +82,7 @@ fun MirageControlScreen(
 @Composable
 private fun OwnedDeviceRow(
     label: String,
-    lastUpdated: String,
+    serialNumber: String,
     onOpenInfo: () -> Unit
 ) {
     Row(
@@ -87,9 +94,24 @@ private fun OwnedDeviceRow(
     ) {
         Column(Modifier.weight(1f)) {
             Text(label, color = Ink, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Text("Last updated: $lastUpdated", color = MirageMuted, fontSize = 12.sp)
+            Text("Serial: $serialNumber", color = MirageMuted, fontSize = 12.sp)
         }
         Spacer(Modifier.width(8.dp))
-        MirageButton("Device info", onOpenInfo, secondary = true)
+
+        // Slimmer height using reduced vertical padding (4.dp)
+        Box(
+            Modifier
+                .hardSurface(color = GreenLight, offset = 4.dp, borderWidth = 2.dp)
+                .clickable(onClick = onOpenInfo)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Device info",
+                color = Ink,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
+        }
     }
 }
