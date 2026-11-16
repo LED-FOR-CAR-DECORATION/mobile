@@ -127,4 +127,15 @@ class DeviceRepositoryImpl(
         }
         return Resource.Error(fallbackMessage)
     }
+    override suspend fun isMacOwned(macAddress: String): Boolean {
+        val normalized = macAddress.trim().uppercase()
+        val cached = loadFromCacheOrError("") as? Resource.Success ?: return false
+        return cached.data.any { it.macAddress.trim().uppercase() == normalized }
+    }
+
+    override suspend fun cacheOwnedDevice(device: OwnedDevice) {
+        val existing = (loadFromCacheOrError("") as? Resource.Success)?.data.orEmpty()
+        val merged = existing.filterNot { it.id == device.id } + device
+        userPreferences.saveCachedDevices(gson.toJson(merged))
+    }
 }

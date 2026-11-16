@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.carled.app.core.common.Resource
 import com.carled.app.domain.model.ClaimedDevice
 import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.OwnedDevice
 import com.carled.app.domain.model.QrDecodeResult
 import com.carled.app.domain.model.parseDeviceClaimPayload
 import com.carled.app.domain.repository.DeviceClaimRepository
+import com.carled.app.domain.repository.DeviceRepository
 import com.carled.app.domain.usecase.ble.BleUseCases
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +29,7 @@ sealed class ClaimDeviceUiState {
 
 class ClaimDeviceViewModel(
     private val repository: DeviceClaimRepository,
+    private val deviceRepository: DeviceRepository,
     private val bleUseCases: BleUseCases
 ) : ViewModel() {
 
@@ -54,6 +57,20 @@ class ClaimDeviceViewModel(
                     when (val res = repository.claimDevice(result.payload)) {
                         is Resource.Success -> {
                             val device = res.data
+                            // Ghi ngay vào cache trước khi tự động kết nối BLE, vì
+                            // isMacOwned() (BleDeviceRepositoryImpl) chỉ đọc cache —
+                            // nếu không có bước này, thiết bị vừa claim sẽ bị từ chối
+                            // kết nối cho tới khi OwnedDevicesViewModel.refresh() chạy xong.
+                            deviceRepository.cacheOwnedDevice(
+                                OwnedDevice(
+                                    id = device.id,
+                                    deviceName = device.deviceName,
+                                    macAddress = device.macAddress,
+                                    serialNumber = device.serialNumber,
+                                    firmwareVersion = null,
+                                    lastUpdated = null
+                                )
+                            )
                             if (_autoConnect.value) connectOverBle(device) else _uiState.value = ClaimDeviceUiState.Claimed(device)
                         }
                         is Resource.Error -> {

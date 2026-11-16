@@ -1,5 +1,6 @@
 package com.carled.app.data.repository
 
+import android.util.Log
 import com.carled.app.data.ble.BleProtocolHelper
 import com.carled.app.data.ble.CarLedBleManager
 import com.carled.app.data.ble.ConfirmedCanvasSender
@@ -24,10 +25,21 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class BleDeviceRepositoryImpl(
-    private val bleManager: CarLedBleManager
+    private val bleManager: CarLedBleManager,
+    /** Composed from DeviceRepository::isMacOwned at the DI root (ServiceLocator)
+     *  to avoid this repository depending on DeviceRepository's type directly. */
+    private val isMacOwned: suspend (String) -> Boolean
 ) : BleDeviceRepository {
 
-    override val connectionState: StateFlow<ConnectionState> = bleManager.connectionState
+    companion object {
+        private const val TAG = "BleDeviceRepository"
+    }
+
+    // Owned internally now (not a passthrough) so a rejected connection can be
+    // overridden with an Error state instead of surfacing bleManager's raw Connected.
+    private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
+    override val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
+
     override val scannedDevices: StateFlow<List<BleDeviceModel>> = bleManager.scannedDevices
     override val telemetryStatus: StateFlow<DeviceTelemetryStatus> = bleManager.telemetryStatus
     override val telemetryEvent: SharedFlow<TelemetryEvent> = bleManager.telemetryEvent
@@ -35,18 +47,43 @@ class BleDeviceRepositoryImpl(
     private val _ledState = MutableStateFlow(LedControlState())
     override val ledState: StateFlow<LedControlState> = _ledState.asStateFlow()
 
-    // Lifetime matches the singleton repository — never cancelled.
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    // Set right after we force-disconnect an unowned device, so the Disconnected
+    // event that bleManager emits a moment later doesn't clobber the Error message
+    // we just surfaced. Cleared on the next Disconnected we see.
+    private var suppressNextDisconnected = false
+
     init {
-        // Mirror periodic telemetry into _ledState so the UI self-corrects when
-        // the LED changes state externally: physical button, another device, power
-        // cycle with different firmware defaults, etc.
-        //
-        // ControlViewModel collects ledState via collectLatest + 300 ms delay, so
-        // in-flight drag commands always win: a continuous slider drag triggers
-        // many rapid command-driven updates, each restarting collectLatest's timer
-        // before telemetry can land. The 300 ms settle only fires once dragging stops.
+        repositoryScope.launch {
+            bleManager.connectionState.collect { state ->
+                when {
+                    state is ConnectionState.Connected -> {
+                        val owned = try {
+                            isMacOwned(state.deviceAddress)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Không kiểm tra được quyền sở hữu thiết bị: ${e.message}")
+                            false
+                        }
+                        if (owned) {
+                            _connectionState.value = state
+                        } else {
+                            Log.w(TAG, "Từ chối kết nối: MAC ${state.deviceAddress} không thuộc tài khoản hiện tại.")
+                            suppressNextDisconnected = true
+                            _connectionState.value = ConnectionState.Error(
+                                "Thiết bị BLE này không thuộc tài khoản của bạn. Vui lòng quét mã QR để thêm thiết bị trước."
+                            )
+                            bleManager.disconnect()
+                        }
+                    }
+                    state is ConnectionState.Disconnected && suppressNextDisconnected -> {
+                        suppressNextDisconnected = false
+                        // Giữ nguyên thông báo lỗi vừa phát ra, không bị Disconnected ghi đè.
+                    }
+                    else -> _connectionState.value = state
+                }
+            }
+        }
         repositoryScope.launch {
             bleManager.telemetryStatus.collect { status ->
                 _ledState.update { current ->
@@ -115,12 +152,6 @@ class BleDeviceRepositoryImpl(
         bleManager.sendJson(BleProtocolHelper.buildWifiConfigJson(ssid, password))
     }
 
-    /**
-     * Clears the LED canvas by sending CMD_CANVAS_CLEAR (0x15).
-     * Previously this called liveSender.clear() which sent an empty CMD_DRAW_CONFIRMED
-     * (0x1A) packet — the firmware does not treat that as a clear command and the
-     * ack wait would time out and throw.
-     */
     override suspend fun clearCanvas() {
         bleManager.sendCommand(BleProtocolHelper.buildCanvasClearFrame(), throttled = false)
     }
@@ -129,12 +160,6 @@ class BleDeviceRepositoryImpl(
         bleManager.sendJson(BleProtocolHelper.buildReloadProjectionJson())
     }
 
-    /**
-     * Upload ảnh RGB565 lên ESP32 theo Binary Projection Protocol:
-     *   1. Gửi PROJECTION_START [0x10]
-     *   2. Gửi từng PROJECTION_CHUNK [0x11] (tối đa 128 bytes/chunk — well within 240-byte limit)
-     *   3. Gửi PROJECTION_FINISH [0x12]
-     */
     override suspend fun uploadProjection(rgb565Data: ByteArray) = uploadAnimation(rgb565Data, 1, 200)
 
     override suspend fun uploadAnimation(rgb565Data: ByteArray, frameCount: Int, frameDelayMs: Int) {
@@ -156,7 +181,7 @@ class BleDeviceRepositoryImpl(
             val end = minOf(offset + chunkSize, rgb565Data.size)
             val chunk = rgb565Data.copyOfRange(offset, end)
             bleManager.sendCommand(BleProtocolHelper.buildProjectionChunkFrame(chunkIndex, chunk), throttled = false)
-            delay(25) // Tối ưu BLE throughput đồng bộ với ble_image_importer.html
+            delay(25)
             offset = end
             chunkIndex++
         }

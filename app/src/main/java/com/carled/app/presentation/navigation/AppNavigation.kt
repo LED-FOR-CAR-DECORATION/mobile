@@ -141,7 +141,7 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
         composable(NavRoute.ClaimDevice.route) { entry ->
             val vm: ClaimDeviceViewModel = viewModel(
                 entry,
-                factory = factory { ClaimDeviceViewModel(ServiceLocator.deviceClaimRepository, ServiceLocator.bleUseCases) }
+              factory = factory { ClaimDeviceViewModel(ServiceLocator.deviceClaimRepository, ServiceLocator.deviceRepository, ServiceLocator.bleUseCases) }
             )
             ClaimDeviceScreen(
                 vm = vm,

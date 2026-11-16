@@ -49,6 +49,9 @@ fun parseDeviceClaimPayload(raw: String): QrDecodeResult {
             put("sig", sig)
         }.toString()
 
+        android.util.Log.d("DeviceClaimParser", "Parsed QR successfully -> SN: $sn | MAC: $mac | SIG: $sig")
+        android.util.Log.d("DeviceClaimParser", "Serialized compact qrPayload string: $compactQr")
+
         QrDecodeResult.Success(
             DeviceClaimPayload(
                 version = version,

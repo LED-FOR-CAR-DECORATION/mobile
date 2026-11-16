@@ -1,5 +1,6 @@
 package com.carled.app.data.repository
 
+import android.util.Log
 import com.carled.app.core.common.Resource
 import com.carled.app.data.remote.ApiService
 import com.carled.app.data.remote.dto.ClaimDeviceRequest
@@ -17,6 +18,10 @@ class DeviceClaimRepositoryImpl(
     override suspend fun claimDevice(payload: DeviceClaimPayload): Resource<ClaimedDevice> {
         val authHeader = authHeaderProvider()
             ?: return Resource.Error("Bạn cần đăng nhập trước khi thêm thiết bị.")
+
+        // Added log to inspect outgoing QR payload string and authorization token
+        Log.d("DeviceClaimRepo", "Sending claim request -> qrPayload: ${payload.qrPayload}")
+        Log.d("DeviceClaimRepo", "Using auth header: $authHeader")
 
         return try {
             val response = api.claimDevice(

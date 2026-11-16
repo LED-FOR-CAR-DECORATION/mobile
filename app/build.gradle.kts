@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-val stagingApiUrl = "https://lumintra-backend-staging.bluedesert-a7b94014.eastasia.azurecontainerapps.io/"
+val stagingApiUrl = "https://tax-sims-moss-entries.trycloudflare.com/"
 val releaseApiUrl = providers.gradleProperty("releaseApiUrl").getOrElse(stagingApiUrl).trimEnd('/') + "/"
 
 android {

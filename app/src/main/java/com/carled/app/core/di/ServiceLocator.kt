@@ -166,7 +166,10 @@ object ServiceLocator {
     }
 
     val bleDeviceRepository: BleDeviceRepository by lazy {
-        BleDeviceRepositoryImpl(bleManager)
+        BleDeviceRepositoryImpl(
+            bleManager = bleManager,
+            isMacOwned = deviceRepository::isMacOwned
+        )
     }
 
     val authRepository: AuthRepository by lazy {
