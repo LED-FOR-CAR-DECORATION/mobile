@@ -1,5 +1,7 @@
 package com.carled.app.data.ble
 
+import org.json.JSONObject
+
 data class TouchPoint(val x: Int, val y: Int, val r: Int, val g: Int, val b: Int)
 
 /**
@@ -71,7 +73,7 @@ object BleProtocolHelper {
      * [0xAA, 0x14, count, x0,y0,r0,g0,b0, ..., xN,yN,rN,gN,bN, checksum, 0x55]
      */
     fun buildBatchDrawFrame(points: List<TouchPoint>): ByteArray {
-        require(points.size in 1..MAX_DRAW_POINTS) { "Batch must contain1..12 pixels; never truncate a stroke" }
+        require(points.size in 1..MAX_DRAW_POINTS) { "Batch must contain 1..12 pixels; never truncate a stroke" }
         val count = points.size
         val payload = ByteArray(3 + count * 5 + 2)
         payload[0] = HEADER
@@ -98,15 +100,15 @@ object BleProtocolHelper {
 
     fun buildConfirmedBatchFrame(points: List<TouchPoint>, sequence: Int): ByteArray {
         require(sequence in 0..65535)
-        require(points.all { it.x in 0..63 && it.y in 0..31 && listOf(it.r,it.g,it.b).all { c -> c in 0..255 } })
+        require(points.all { it.x in 0..63 && it.y in 0..31 && listOf(it.r, it.g, it.b).all { c -> c in 0..255 } })
         val legacy = buildBatchDrawFrame(points)
         val frame = ByteArray(legacy.size + 2)
         frame[0] = HEADER; frame[1] = CMD_DRAW_CONFIRMED
         frame[2] = (sequence ushr 8).toByte(); frame[3] = sequence.toByte()
-        legacy.copyInto(frame,4,2,legacy.size-2)
+        legacy.copyInto(frame, 4, 2, legacy.size - 2)
         var checksum = 0
-        for (i in 1 until frame.size-2) checksum = checksum xor (frame[i].toInt() and 255)
-        frame[frame.size-2] = checksum.toByte(); frame[frame.size-1] = TAIL
+        for (i in 1 until frame.size - 2) checksum = checksum xor (frame[i].toInt() and 255)
+        frame[frame.size - 2] = checksum.toByte(); frame[frame.size - 1] = TAIL
         return frame
     }
 
@@ -132,9 +134,12 @@ object BleProtocolHelper {
 
     /**
      * Projection Chunk — [0xAA, 0x11, chunkIdxH, chunkIdxL, dataLen, <data...>, 0x55]
+     * Max 240 bytes of pixel data per chunk — enforced with require() so oversized
+     * callers surface a bug immediately rather than silently dropping trailing bytes.
      */
     fun buildProjectionChunkFrame(chunkIndex: Int, data: ByteArray): ByteArray {
-        val dataLen = data.size.coerceAtMost(240)
+        require(data.size <= 240) { "Chunk too large: ${data.size} bytes (max 240)" }
+        val dataLen = data.size
         val frame = ByteArray(5 + dataLen + 1)
         frame[0] = HEADER
         frame[1] = CMD_PROJ_CHUNK
@@ -154,6 +159,9 @@ object BleProtocolHelper {
     }
 
     // ──────────────── JSON Command Builders ────────────────
+    // All use JSONObject so special characters in user-supplied strings
+    // (quotes, backslashes, control chars) are properly escaped rather
+    // than breaking the JSON frame or producing unexpected firmware behaviour.
 
     fun buildMarqueeJson(
         text: String,
@@ -163,10 +171,22 @@ object BleProtocolHelper {
         yPos: Int = -1,
         rainbow: Boolean = false,
         scrollMode: String = "scroll_left"
-    ): String = """{"type":"marquee","text":"$text","color":{"r":$r,"g":$g,"b":$b},"speed":$speed,"size":$size,"y_pos":$yPos,"mode":"$scrollMode","rainbow":$rainbow}"""
+    ): String = JSONObject().apply {
+        put("type", "marquee")
+        put("text", text)
+        put("color", JSONObject().apply { put("r", r); put("g", g); put("b", b) })
+        put("speed", speed)
+        put("size", size)
+        put("y_pos", yPos)
+        put("mode", scrollMode)
+        put("rainbow", rainbow)
+    }.toString()
 
-    fun buildWifiConfigJson(ssid: String, password: String): String =
-        """{"command":"wifi_config","ssid":"$ssid","password":"$password"}"""
+    fun buildWifiConfigJson(ssid: String, password: String): String = JSONObject().apply {
+        put("command", "wifi_config")
+        put("ssid", ssid)
+        put("password", password)
+    }.toString()
 
     fun buildCanvasClearJson(): String = """{"command":"canvas_clear"}"""
 

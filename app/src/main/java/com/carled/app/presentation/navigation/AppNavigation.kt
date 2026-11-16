@@ -149,13 +149,10 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                 onFinished = { connected ->
                     ownedDevices.refresh()
                     if (connected) {
-                        // Claimed and already paired over BLE — go straight to its controls.
                         navController.navigate(NavRoute.PanelControl.create("current")) {
                             popUpTo(NavRoute.ClaimDevice.route) { inclusive = true }
                         }
                     } else {
-                        // Claimed, but not connected (auto-connect was off, cancelled, or failed).
-                        // Hand back to Home; the person can connect from there whenever they like.
                         goBack()
                     }
                 }
@@ -169,7 +166,8 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                 panelId = id,
                 back = goBack,
                 openPanelControl = { deviceId -> navController.navigate(NavRoute.PanelControl.create(deviceId)) },
-                connectDevice = { mac -> scanner.connectDevice(mac) }
+                connectDevice = { mac -> scanner.connectDevice(mac) },
+                disconnectDevice = { ServiceLocator.bleUseCases.disconnectDevice() }
             )
         }
     }
@@ -198,10 +196,6 @@ private fun HomeRoute(
             if (connected) {
                 navController.navigate(NavRoute.PanelControl.create("current"))
             } else {
-                // NavRoute.Control ("control") has no destination registered in the
-                // NavHost below — navigating to it crashes with "Navigation destination
-                // ... cannot be found in the navigation graph". Nothing being BLE-connected
-                // yet means there's nothing to control, so send the person to pair first.
                 navController.navigate(NavRoute.Scan.route)
             }
         },

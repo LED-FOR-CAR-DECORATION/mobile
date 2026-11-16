@@ -9,6 +9,7 @@ import com.carled.app.domain.repository.DeviceRepository
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
 
 class DeviceRepositoryImpl(
     private val api: ApiService,
@@ -17,57 +18,55 @@ class DeviceRepositoryImpl(
     private val authHeaderProvider: suspend () -> String?
 ) : DeviceRepository {
 
+    // -------------------------------------------------------------------------
+    // Device list
+    // -------------------------------------------------------------------------
+
     override suspend fun getOwnedDevices(): Resource<List<OwnedDevice>> {
         val authHeader = authHeaderProvider()
 
         return try {
             if (authHeader != null) {
-                android.util.Log.d("API_DEBUG", "Outgoing Authorization Header: $authHeader")
-                // Pass page = 0 to satisfy validation: page >= 0
                 val response = api.getDevices(authorization = authHeader, page = 0, size = 50)
                 if (response.isSuccessful) {
-                    val apiResponse = response.body()
-                    val deviceDtos = apiResponse?.data ?: emptyList()
-
-                    val domainModels = deviceDtos.map { dto ->
+                    val domainModels = (response.body()?.data ?: emptyList()).map { dto ->
                         OwnedDevice(
-                            id = dto.deviceId.toString(),
-                            deviceName = dto.deviceName,
-                            macAddress = dto.macAddress,
-                            serialNumber = dto.serialNumber,
+                            id              = dto.deviceId.toString(),
+                            deviceName      = dto.deviceName,
+                            macAddress      = dto.macAddress,
+                            serialNumber    = dto.serialNumber,
                             firmwareVersion = dto.currentFirmwareId?.toString(),
-                            lastUpdated = dto.boundAt
+                            lastUpdated     = dto.boundAt
                         )
                     }
-
-                    // Save successfully fetched devices to local cache
+                    // Persist immediately so the next cold-start reads fresh data.
                     userPreferences.saveCachedDevices(gson.toJson(domainModels))
-
                     return Resource.Success(domainModels)
                 } else {
-                    // Include response.code() to easily diagnose 401, 403, 500, etc.
                     return loadFromCacheOrError(
                         "Không thể tải danh sách thiết bị từ máy chủ (lỗi ${response.code()})."
                     )
                 }
             }
-
-            // If token is missing, try loading from local cache
             loadFromCacheOrError("Bạn cần đăng nhập trước khi xem danh sách thiết bị.")
         } catch (e: IOException) {
-            // Offline fallback: load from local storage
             loadFromCacheOrError("Không có kết nối mạng. Đang hiển thị dữ liệu lưu trữ cục bộ.")
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e } catch (e: Exception) {
             loadFromCacheOrError(e.message ?: "Đã xảy ra lỗi khi tải danh sách thiết bị.")
         }
     }
 
-    override suspend fun getDeviceDetail(deviceId: Long): Resource<DeviceDetailDto> {
-        val authHeader = authHeaderProvider()
+    override suspend fun getOwnedDevicesFromCache(): Resource<List<OwnedDevice>> =
+        loadFromCacheOrError("Chưa có dữ liệu thiết bị được lưu trữ cục bộ.")
 
-        if (deviceId <= 0) {
-            return Resource.Error("ID thiết bị phải lớn hơn 0.")
-        }
+    // -------------------------------------------------------------------------
+    // Device detail
+    // -------------------------------------------------------------------------
+
+    override suspend fun getDeviceDetail(deviceId: Long): Resource<DeviceDetailDto> {
+        if (deviceId <= 0) return Resource.Error("ID thiết bị phải lớn hơn 0.")
+
+        val authHeader = authHeaderProvider()
 
         return try {
             if (authHeader != null) {
@@ -75,7 +74,6 @@ class DeviceRepositoryImpl(
                 if (response.isSuccessful) {
                     val body = response.body()?.data
                     if (body != null) {
-                        // Save detail to local cache
                         userPreferences.saveCachedDeviceDetail(deviceId, gson.toJson(body))
                         return Resource.Success(body)
                     }
@@ -86,38 +84,45 @@ class DeviceRepositoryImpl(
                     )
                 }
             }
-
-            // Fallback to local cache if offline or request fails
             loadDetailFromCacheOrError(deviceId, "Không thể tải thông tin chi tiết thiết bị từ máy chủ.")
         } catch (e: IOException) {
             loadDetailFromCacheOrError(deviceId, "Không có kết nối mạng. Đang hiển thị dữ liệu lưu trữ cục bộ.")
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e } catch (e: Exception) {
             loadDetailFromCacheOrError(deviceId, e.message ?: "Đã xảy ra lỗi.")
+        }
+        catch (e: Exception) {
+            loadDetailFromCacheOrError(deviceId, "Không thể tải thông tin chi tiết thiết bị.")
         }
     }
 
+    override suspend fun getDeviceDetailFromCache(deviceId: Long): Resource<DeviceDetailDto> =
+        loadDetailFromCacheOrError(deviceId, "Chưa có thông tin chi tiết thiết bị được lưu trữ cục bộ.")
+
+    // -------------------------------------------------------------------------
+    // Private cache helpers
+    // -------------------------------------------------------------------------
+
     private fun loadFromCacheOrError(fallbackMessage: String): Resource<List<OwnedDevice>> {
-        val cachedJson = userPreferences.getCachedDevices()
-        if (!cachedJson.isNullOrBlank()) {
+        val json = userPreferences.getCachedDevices()
+        if (!json.isNullOrBlank()) {
             try {
                 val type = object : TypeToken<List<OwnedDevice>>() {}.type
-                val cachedList = gson.fromJson<List<OwnedDevice>>(cachedJson, type)
-                if (!cachedList.isNullOrEmpty()) {
-                    return Resource.Success(cachedList)
-                }
+                val list = gson.fromJson<List<OwnedDevice>>(json, type)
+                if (list != null) return Resource.Success(list)
             } catch (_: Exception) {}
         }
         return Resource.Error(fallbackMessage)
     }
 
-    private fun loadDetailFromCacheOrError(deviceId: Long, fallbackMessage: String): Resource<DeviceDetailDto> {
-        val cachedJson = userPreferences.getCachedDeviceDetail(deviceId)
-        if (!cachedJson.isNullOrBlank()) {
+    private fun loadDetailFromCacheOrError(
+        deviceId: Long,
+        fallbackMessage: String
+    ): Resource<DeviceDetailDto> {
+        val json = userPreferences.getCachedDeviceDetail(deviceId)
+        if (!json.isNullOrBlank()) {
             try {
-                val cachedDetail = gson.fromJson(cachedJson, DeviceDetailDto::class.java)
-                if (cachedDetail != null) {
-                    return Resource.Success(cachedDetail)
-                }
+                val detail = gson.fromJson(json, DeviceDetailDto::class.java)
+                if (detail != null) return Resource.Success(detail)
             } catch (_: Exception) {}
         }
         return Resource.Error(fallbackMessage)

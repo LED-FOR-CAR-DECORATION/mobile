@@ -42,5 +42,5 @@ data class DeviceModelDto(
     val productId: Long,
     val modelName: String,
     val status: String,
-    val spec: String?
+    val spec: com.google.gson.JsonElement? = null
 )

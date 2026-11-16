@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import retrofit2.Response
+import kotlin.coroutines.cancellation.CancellationException
 
 class AuthRepositoryImpl(
     private val apiService: ApiService,
@@ -48,9 +49,9 @@ class AuthRepositoryImpl(
         }
 
     /**
-     * Registers a new account. The server returns 201 + the pending user data
-     * (no token). Returns the registered email so the UI can navigate directly
-     * to the email-verification screen.
+    - Registers a new account. The server returns 201 + the pending user data
+    - (no token). Returns the registered email so the UI can navigate directly
+    - to the email-verification screen.
      */
     override suspend fun register(
         email: String,
@@ -65,7 +66,7 @@ class AuthRepositoryImpl(
         } else {
             Resource.Error(parseErrorBody(response, "Đăng ký không thành công"))
         }
-    } catch (e: Exception) {
+    } catch (e: CancellationException) { throw e }catch (e: Exception) {
         Resource.Error(e.localizedMessage ?: "Lỗi kết nối mạng", e)
     }
 
@@ -133,33 +134,24 @@ class AuthRepositoryImpl(
             } else {
                 Resource.Error(parseErrorBody(response, "Không tải được thông tin tài khoản"))
             }
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }catch (e: Exception) {
             Resource.Error(e.localizedMessage ?: "Lỗi kết nối mạng", e)
         }
     }
 
     override suspend fun logout(): Resource<Unit> {
-        return try {
-            val token = userPreferences.getAuthToken()?.takeIf { it.isNotBlank() }
-            val refreshToken = userPreferences.getRefreshToken().orEmpty()
+        val token        = userPreferences.getAuthToken()?.takeIf { it.isNotBlank() }
+        val refreshToken = userPreferences.getRefreshToken()?.takeIf { it.isNotBlank() }
+        clearSession()
 
-            val response = if (token != null && refreshToken.isNotBlank()) {
+        if (token != null && refreshToken != null) {
+            try {
                 apiService.logout("Bearer $token", LogoutRequest(refreshToken))
-            } else {
-                null
-            }
-
-            clearSession()
-
-            if (response == null || response.isSuccessful) {
-                Resource.Success(Unit)
-            } else {
-                Resource.Error(parseErrorBody(response, "Đăng xuất gặp sự cố phía máy chủ"))
-            }
-        } catch (e: Exception) {
-            clearSession()
-            Resource.Success(Unit)
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { /* silent — local logout is already complete */ }
         }
+
+        return Resource.Success(Unit)
     }
 
     override suspend fun isLoggedIn(): Boolean =
@@ -170,9 +162,9 @@ class AuthRepositoryImpl(
     // -------------------------------------------------------------------------
 
     /**
-     * The response carries only {accessToken, refreshToken, expiresIn, tokenType} —
-     * no user object — so the User is rebuilt entirely from the accessToken's
-     * own JWT claims (sub -> id, email, roles -> role).
+    - The response carries only {accessToken, refreshToken, expiresIn, tokenType} —
+    - no user object — so the User is rebuilt entirely from the accessToken's
+    - own JWT claims (sub -> id, email, roles -> role).
      */
     private suspend fun safeAuthCall(
         defaultError: String,
@@ -217,7 +209,7 @@ class AuthRepositoryImpl(
             } else {
                 Resource.Error(parseErrorBody(response, defaultError))
             }
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }catch (e: Exception) {
             Resource.Error(e.localizedMessage ?: "Lỗi kết nối mạng", e)
         }
     }
@@ -229,17 +221,18 @@ class AuthRepositoryImpl(
         val response = block()
         if (response.isSuccessful) Resource.Success(Unit)
         else Resource.Error(parseErrorBody(response, defaultError))
-    } catch (e: Exception) {
+    } catch (e: CancellationException) { throw e }catch (e: Exception) {
         Resource.Error(e.localizedMessage ?: "Lỗi kết nối mạng", e)
     }
 
     /** Best-effort GET /api/users/me for the just-issued [accessToken]. Returns
-     * null on any failure (400/404/500/network) — callers fall back to the
-     * JWT-only user rather than failing a login that already succeeded. */
+    - null on any failure (400/404/500/network) — callers fall back to the
+    - JWT-only user rather than failing a login that already succeeded. */
+
     private suspend fun fetchProfile(accessToken: String): UserProfileData? = try {
         val response = apiService.getCurrentUserProfile("Bearer $accessToken")
         if (response.isSuccessful) response.body()?.data else null
-    } catch (e: Exception) {
+    } catch (e: CancellationException) { throw e }catch (e: Exception) {
         null
     }
 
@@ -261,9 +254,9 @@ class AuthRepositoryImpl(
                 ?.takeIf { it.isNotBlank() }
                 ?.let { gson.fromJson(it, ApiErrorResponse::class.java).resolvedMessage() }
                 ?: defaultMessage
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }catch (e: Exception) {
             defaultMessage
         }
     }
-
+    override fun notifySessionExpired() = clearSession()
 }

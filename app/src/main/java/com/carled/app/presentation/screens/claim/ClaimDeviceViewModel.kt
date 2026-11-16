@@ -1,5 +1,6 @@
 package com.carled.app.presentation.screens.claim
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.carled.app.core.common.Resource
@@ -18,16 +19,9 @@ import kotlinx.coroutines.launch
 sealed class ClaimDeviceUiState {
     object Scanning : ClaimDeviceUiState()
     object Claiming : ClaimDeviceUiState()
-
-
     data class Connecting(val device: ClaimedDevice) : ClaimDeviceUiState()
-
-
     data class Claimed(val device: ClaimedDevice) : ClaimDeviceUiState()
-
-
     data class Connected(val device: ClaimedDevice) : ClaimDeviceUiState()
-
     data class Error(val message: String) : ClaimDeviceUiState()
 }
 
@@ -41,17 +35,20 @@ class ClaimDeviceViewModel(
 
     private val _autoConnect = MutableStateFlow(true)
     val autoConnect: StateFlow<Boolean> = _autoConnect.asStateFlow()
+
+    private var hasHandledCode = false
+    private var connectJob: Job? = null
+
     fun setAutoConnect(enabled: Boolean) {
         _autoConnect.value = enabled
     }
-    private var hasHandledCode = false
-    private var connectJob: Job? = null
 
     fun onQrCodeDetected(raw: String) {
         if (hasHandledCode) return
         when (val result = parseDeviceClaimPayload(raw)) {
             is QrDecodeResult.Success -> {
                 hasHandledCode = true
+                Log.i("ClaimDeviceVM", "QR Code scanned successfully: ${result.payload}")
                 _uiState.value = ClaimDeviceUiState.Claiming
                 viewModelScope.launch {
                     when (val res = repository.claimDevice(result.payload)) {
@@ -73,6 +70,7 @@ class ClaimDeviceViewModel(
     }
 
     private fun connectOverBle(device: ClaimedDevice) {
+        connectJob?.cancel()
         _uiState.value = ClaimDeviceUiState.Connecting(device)
         bleUseCases.connectDevice(device.macAddress)
         connectJob = viewModelScope.launch {

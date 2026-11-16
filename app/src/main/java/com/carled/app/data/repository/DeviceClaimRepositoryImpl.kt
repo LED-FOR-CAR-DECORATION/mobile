@@ -7,7 +7,7 @@ import com.carled.app.domain.model.ClaimedDevice
 import com.carled.app.domain.model.DeviceClaimPayload
 import com.carled.app.domain.repository.DeviceClaimRepository
 import java.io.IOException
-
+import kotlin.coroutines.cancellation.CancellationException
 
 class DeviceClaimRepositoryImpl(
     private val api: ApiService,
@@ -50,7 +50,7 @@ class DeviceClaimRepositoryImpl(
             }
         } catch (e: IOException) {
             Resource.Error("Không có kết nối mạng. Kiểm tra Internet và thử lại.", e)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e } catch (e: Exception) {
             Resource.Error(e.message ?: "Đã xảy ra lỗi khi xác nhận thiết bị.", e)
         }
     }

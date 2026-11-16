@@ -2,6 +2,7 @@ package com.carled.app.presentation.screens.claim
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
@@ -11,9 +12,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -27,31 +26,17 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import com.carled.app.R
 import com.carled.app.presentation.components.*
 import com.carled.app.presentation.theme.*
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
 
-/**
- * Opens the camera, scans for the device's QR code, and claims it via
- * [ClaimDeviceViewModel]. Unless the person turns off "Tự động kết nối Bluetooth"
- * below, a successful claim is immediately followed by an attempt to pair over
- * BLE using the MAC address encoded in the QR code.
- *
- * [onFinished] fires once there is nothing left to show on this screen:
- * `connected = true` when BLE pairing also succeeded, `false` when the device
- * is claimed but not (yet) connected — the caller decides where to send the
- * person in each case (e.g. straight to Panel Control vs. back home).
- */
 @Composable
 fun ClaimDeviceScreen(
     vm: ClaimDeviceViewModel,
@@ -83,10 +68,13 @@ fun ClaimDeviceScreen(
             .padding(8.dp)
     ) {
         WindowFrame(title = "Scan device", onClose = back, modifier = Modifier.fillMaxSize()) {
+            // Removed verticalScroll to prevent infinite max height constraint crashes
             Column(
-                Modifier.fillMaxSize().padding(16.dp),
+                Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 val state = uiState
 
@@ -94,7 +82,7 @@ fun ClaimDeviceScreen(
                 if (state is ClaimDeviceUiState.Scanning) {
                     Box(
                         Modifier
-                            .size(260.dp)
+                            .size(280.dp) // Adjusted to fit safely without overflowing height
                             .clip(RoundedCornerShape(16.dp))
                             .dashedBorder(color = Green, cornerRadius = 16.dp)
                     ) {
@@ -114,11 +102,6 @@ fun ClaimDeviceScreen(
                         }
                     }
                 }
-
-                // Matches the "Bind Device" CTA in the mockup...
-                BindDeviceButton(
-                    onClick = { if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA) }
-                )
 
                 if (state is ClaimDeviceUiState.Scanning && hasCameraPermission) {
                     AutoConnectToggle(checked = autoConnect, onCheckedChange = vm::setAutoConnect)
@@ -189,10 +172,20 @@ private fun CameraPreview(enabled: Boolean, onBarcodeDetected: (String) -> Unit)
                         imageProxy.close()
                         return@setAnalyzer
                     }
+
+                    // Add this log to check if frames are hitting the analyzer
+                    Log.d("CameraScan", "Processing frame at rotation: ${imageProxy.imageInfo.rotationDegrees}")
+
                     val input = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
                     scanner.process(input)
                         .addOnSuccessListener { barcodes ->
+                            for (barcode in barcodes) {
+                                Log.i("CameraScan", "Barcode detected raw value: ${barcode.rawValue}")
+                            }
                             barcodes.firstNotNullOfOrNull { it.rawValue }?.let(onBarcodeDetected)
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("CameraScan", "Barcode scan failed: ${e.message}")
                         }
                         .addOnCompleteListener { imageProxy.close() }
                 }
@@ -208,23 +201,6 @@ private fun CameraPreview(enabled: Boolean, onBarcodeDetected: (String) -> Unit)
             previewView
         }
     )
-}
-
-@Composable
-private fun BindDeviceButton(onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .flatSurface(color = Cream)
-            .clickable(onClick = onClick)
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
-    ) {
-        Image(painterResource(R.drawable.ic_qrcode), contentDescription = null, modifier = Modifier.size(28.dp))
-        Spacer(Modifier.width(12.dp))
-        Text("Bind Device", color = Ink, fontWeight = FontWeight.Bold)
-    }
 }
 
 @Composable

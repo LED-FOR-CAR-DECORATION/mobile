@@ -56,8 +56,19 @@ interface ApiService {
     @POST("api/auth/google")
     suspend fun googleAuth(@Body request: GoogleAuthRequest): Response<LoginResponse>
 
+    /**
+     * Logout — always send the refresh token so the server can revoke the session.
+     * The previous parameterless overload was removed: it never invalidated the
+     * refresh token server-side, leaving the session live until natural expiry.
+     *
+     * AuthRepositoryImpl / LogoutUseCase must supply both the Authorization header
+     * and the stored refresh token in the body.
+     */
     @POST("api/auth/logout")
-    suspend fun logout(): Response<Unit>
+    suspend fun logout(
+        @Header("Authorization") authorization: String,
+        @Body request: LogoutRequest
+    ): Response<Unit>
 
     // -------------------------------------------------------------------------
     // Users
@@ -109,11 +120,4 @@ interface ApiService {
         @Header("Authorization") authorization: String,
         @Path("id") id: Long
     ): Response<ApiResponse<DeviceDetailDto>>
-
-    @POST("api/auth/logout")
-    suspend fun logout(
-        @Header("Authorization") authorization: String,
-        @Body request: LogoutRequest
-    ): Response<Unit>
 }
-

@@ -50,4 +50,5 @@ interface AuthRepository {
     suspend fun logout(): Resource<Unit>
 
     suspend fun isLoggedIn(): Boolean
+    fun notifySessionExpired()
 }
