@@ -40,28 +40,13 @@ class OwnedDevicesViewModel(private val repository: DeviceRepository) : ViewMode
     // Init — cache first, network only when necessary
     // -------------------------------------------------------------------------
 
-    /**
-     * On cold start: read whatever is on disk and show it immediately — no
-     * network call, no token needed, no Loading flash for returning users.
-     *
-     * Network is triggered automatically only when the cache is empty, which
-     * happens exactly twice in normal usage:
-     *   1. First time the account is used on this device (fresh install / first login).
-     *   2. After an explicit [refresh] call (post-claim).
-     *
-     * Logout wipes [UserPreferences], so logging back in counts as "first time"
-     * and correctly triggers an automatic fetch.
-     */
     private suspend fun initialize() {
         when (val cached = repository.getOwnedDevicesFromCache()) {
             is Resource.Success -> {
                 _uiState.value = OwnedDevicesUiState.Loaded(cached.data)
-                // Empty cache = account has never had its device list fetched on
-                // this device (new install or first login). Fetch once automatically.
                 if (cached.data.isEmpty()) fetchFromServer()
             }
             is Resource.Error -> {
-                // No cache at all — first time this account is used here.
                 fetchFromServer()
             }
             Resource.Loading -> Unit
@@ -72,29 +57,23 @@ class OwnedDevicesViewModel(private val repository: DeviceRepository) : ViewMode
     // Explicit refresh — called after a successful device claim
     // -------------------------------------------------------------------------
 
-    /**
-     * Fetches a fresh list from the server and updates the cache.
-     * Only call this when you know the server state has changed:
-     * after [ClaimDeviceScreen] reports a successful claim.
-     *
-     * If the fetch fails, any already-displayed cached data is preserved — the
-     * user will not see a regression to an error screen just because a background
-     * refresh hit a transient network issue.
-     */
     fun refresh() {
         viewModelScope.launch { fetchFromServer() }
     }
 
+    fun onUserLoggedIn() {
+        _detailState.value = emptyMap()
+        _uiState.value = OwnedDevicesUiState.Loading
+        viewModelScope.launch { fetchFromServer() }
+    }
+
     private suspend fun fetchFromServer() {
-        // Show Loading only if there is nothing to display yet.
         if (_uiState.value !is OwnedDevicesUiState.Loaded) {
             _uiState.value = OwnedDevicesUiState.Loading
         }
         when (val res = repository.getOwnedDevices()) {
             is Resource.Success -> _uiState.value = OwnedDevicesUiState.Loaded(res.data)
             is Resource.Error -> {
-                // If we already have good cached data on screen, silently swallow
-                // the error — no need to show a banner for a background refresh failure.
                 if (_uiState.value !is OwnedDevicesUiState.Loaded) {
                     _uiState.value = OwnedDevicesUiState.Error(res.message)
                 }
@@ -107,17 +86,8 @@ class OwnedDevicesViewModel(private val repository: DeviceRepository) : ViewMode
     // Device detail — stale-while-revalidate
     // -------------------------------------------------------------------------
 
-    /**
-     * Shows any cached detail for [deviceId] immediately (no Loading flash),
-     * then silently refreshes from the server in the background.
-     *
-     * If the network call fails but cached data is already displayed, the error
-     * is swallowed — the user keeps seeing their last-known detail rather than
-     * a blank error screen.
-     */
     fun loadDeviceDetail(deviceId: Long) {
         viewModelScope.launch {
-            // Surface cache instantly — eliminates the blank-screen flash on re-open.
             val cached = repository.getDeviceDetailFromCache(deviceId)
             if (cached is Resource.Success) {
                 _detailState.update { it + (deviceId to DeviceDetailUiState.Loaded(cached.data)) }
@@ -125,12 +95,10 @@ class OwnedDevicesViewModel(private val repository: DeviceRepository) : ViewMode
                 _detailState.update { it + (deviceId to DeviceDetailUiState.Loading) }
             }
 
-            // Then silently refresh from the server.
             when (val fresh = repository.getDeviceDetail(deviceId)) {
                 is Resource.Success ->
                     _detailState.update { it + (deviceId to DeviceDetailUiState.Loaded(fresh.data)) }
                 is Resource.Error -> {
-                    // Don't replace a good loaded state with a network error.
                     if (_detailState.value[deviceId] !is DeviceDetailUiState.Loaded) {
                         _detailState.update { it + (deviceId to DeviceDetailUiState.Error(fresh.message)) }
                     }
@@ -139,7 +107,6 @@ class OwnedDevicesViewModel(private val repository: DeviceRepository) : ViewMode
             }
         }
     }
-
 
     fun deviceById(id: String?): OwnedDevice? =
         (uiState.value as? OwnedDevicesUiState.Loaded)?.devices?.firstOrNull { it.id == id }

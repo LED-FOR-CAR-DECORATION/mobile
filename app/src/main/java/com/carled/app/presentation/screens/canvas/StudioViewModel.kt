@@ -80,7 +80,6 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
     private val id = draftId ?: UUID.randomUUID().toString()
     private val writes = Mutex()
     private val changed = Channel<Unit>(Channel.CONFLATED)
-    private var resumeAfterSave = false
     private var wire: IntArray? = null
     private var generation = 0
     private val undo = ArrayDeque<PixelDocument>()
@@ -135,7 +134,6 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
                                 delay(40)
                                 if (epoch != generation) return@withLock false
                                 wire = IntArray(totalPixels)
-                                resumeAfterSave = false
                             }
                             val current = requireNotNull(wire)
                             val target = livePixels(document)
@@ -623,7 +621,6 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
                             is TelemetryEvent.UploadComplete -> {
                                 if (epoch != generation) error("Kết nối đã thay đổi trong khi lưu. Hãy kiểm tra và lưu lại.")
                                 wire = livePixels(d)
-                                resumeAfterSave = true
                                 feedback("LED đã xác nhận lưu vào bộ nhớ thiết bị (SPIFFS).")
                             }
 

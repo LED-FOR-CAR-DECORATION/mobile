@@ -43,14 +43,43 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
     val ownedDevices: OwnedDevicesViewModel = viewModel(factory = factory { OwnedDevicesViewModel(ServiceLocator.deviceRepository) })
     val userFlow = remember { ServiceLocator.authRepository.getCurrentUser() }
     val user by userFlow.collectAsState(initial = null)
+
+    LaunchedEffect(user?.id) {
+        if (user != null) ownedDevices.onUserLoggedIn()
+    }
+
+    // Decided once, synchronously, from whatever AuthRepositoryImpl.buildRestoredUser()
+    // already found in UserPreferences at construction time. NavHost's
+    // startDestination is fixed when the graph is first created, so this can't
+    // rely on the reactive `user` StateFlow above — collectAsState's value may
+    // not be collected yet on this very first composition pass.
+    val hasPersistedSession = remember {
+        ServiceLocator.userPreferences.getAuthToken()?.isNotBlank() == true
+    }
+    val start = if (hasPersistedSession) NavRoute.Main.route else NavRoute.Login.route
+
     val scope = rememberCoroutineScope()
-    val start = NavRoute.Login.route
 
     val goBack: () -> Unit = { navController.popBackStack() }
     val goScan: () -> Unit = { navController.navigate(NavRoute.Scan.route) }
     val logout: () -> Unit = {
         scope.launch {
             ServiceLocator.logoutUseCase()
+            navController.navigate(NavRoute.Login.route) { popUpTo(0) { inclusive = true } }
+        }
+    }
+
+    // If the restored token turns out to actually be invalid/expired — i.e. the
+    // refresh token itself was rejected — ServiceLocator.tokenAuthenticator calls
+    // authRepository.notifySessionExpired(), which flips `user` to null. Without
+    // this, the app would be stuck on whatever authenticated screen it was on,
+    // silently failing every request, instead of returning to Login.
+    var wasLoggedIn by remember { mutableStateOf(hasPersistedSession) }
+    LaunchedEffect(user) {
+        if (user != null) {
+            wasLoggedIn = true
+        } else if (wasLoggedIn) {
+            wasLoggedIn = false
             navController.navigate(NavRoute.Login.route) { popUpTo(0) { inclusive = true } }
         }
     }
@@ -72,6 +101,10 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
             LoginScreen(
                 viewModel = vm,
                 onLoginSuccess = {
+                    // Force an unconditional server fetch that overwrites whatever is
+                    // cached — necessary even on a device where a different account
+                    // was logged in before.
+                    ownedDevices.onUserLoggedIn()
                     navController.navigate(NavRoute.Main.route) {
                         popUpTo(NavRoute.Login.route) { inclusive = true }
                         launchSingleTop = true
@@ -141,7 +174,7 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
         composable(NavRoute.ClaimDevice.route) { entry ->
             val vm: ClaimDeviceViewModel = viewModel(
                 entry,
-              factory = factory { ClaimDeviceViewModel(ServiceLocator.deviceClaimRepository, ServiceLocator.deviceRepository, ServiceLocator.bleUseCases) }
+                factory = factory { ClaimDeviceViewModel(ServiceLocator.deviceClaimRepository, ServiceLocator.deviceRepository, ServiceLocator.bleUseCases) }
             )
             ClaimDeviceScreen(
                 vm = vm,

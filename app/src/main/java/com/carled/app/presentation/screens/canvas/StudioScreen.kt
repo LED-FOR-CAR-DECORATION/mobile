@@ -275,14 +275,7 @@ fun StudioScreen(
     if (showExportDialog && doc != null) {
         ExportDialog(
             onDismiss = { showExportDialog = false },
-            onConfirm = { format ->
-                val success = ImageExportHelper.exportDocument(context, doc, state.name, format)
-                if (success) {
-                    viewModel.feedback("Đã xuất ảnh ra thư mục Pictures/CarLED thành công!")
-                } else {
-                    viewModel.feedback("Không thể xuất ảnh.")
-                }
-            }
+            onConfirm = { format -> viewModel.exportGallery(context, format) }
         )
     }
 
@@ -395,7 +388,7 @@ private fun InteractiveGrid(state: StudioState, vm: StudioViewModel) {
     val doc = state.document ?: return
     val pixels = remember(doc) { doc.composite() }
     var zoom by remember(doc.width, doc.height) { mutableFloatStateOf(1f) }
-    var pan by remember(doc.width, doc.height) { mutableStateOf(Offset.Zero) }
+    var pan by remember(doc.width, doc.height) { mutableStateOf<Offset?>(null) }
 
     val bitmap = remember(doc.width, doc.height) {
         android.graphics.Bitmap.createBitmap(doc.width, doc.height, android.graphics.Bitmap.Config.ARGB_8888)
@@ -422,26 +415,42 @@ private fun InteractiveGrid(state: StudioState, vm: StudioViewModel) {
             Modifier
                 .testTag("pixelCanvas")
                 .fillMaxWidth()
-                .aspectRatio(doc.width.toFloat() / doc.height)
+                // Fixed viewport height — this is the dark workspace area, sized
+                // independently of the document's own aspect ratio. (Kept fixed
+                // rather than fillMaxHeight because this sits inside a
+                // verticalScroll column — an unbounded height there crashes,
+                // same issue already noted elsewhere in this codebase.)
+                .height(360.dp)
                 .clipToBounds()
-                .border(2.dp, MirageInk)
-                .background(Color(0xff18241c))
+                .background(Color(0xff10160f))
                 .pointerInput(doc.width, doc.height) {
                     awaitEachGesture {
+                        fun baseCell() =
+                            minOf(size.width.toFloat() / doc.width, size.height.toFloat() / doc.height)
+
+                        if (pan == null) {
+                            val bc = baseCell()
+                            pan = Offset(
+                                (size.width - doc.width * bc) / 2f,
+                                (size.height - doc.height * bc) / 2f
+                            )
+                        }
+
                         val down = awaitFirstDown(requireUnconsumed = false); down.consume()
 
                         fun position(point: Offset, currentCellSize: Float): Pair<Int, Int> {
-                            return floor((point.x - pan.x) / currentCellSize).toInt() to floor((point.y - pan.y) / currentCellSize).toInt()
+                            val p = pan ?: Offset.Zero
+                            return floor((point.x - p.x) / currentCellSize).toInt() to floor((point.y - p.y) / currentCellSize).toInt()
                         }
 
-                        val initialCellSize = size.width.toFloat() / doc.width * zoom
-                        val p = position(down.position, initialCellSize)
-                        vm.down(p.first, p.second)
+                        val initialCellSize = baseCell() * zoom
+                        val p0 = position(down.position, initialCellSize)
+                        vm.down(p0.first, p0.second)
                         var transforming = false
                         try {
                             do {
                                 val event = awaitPointerEvent()
-                                val activeCellSize = size.width.toFloat() / doc.width * zoom
+                                val activeCellSize = baseCell() * zoom
                                 if (event.changes.count { it.pressed } > 1) {
                                     if (!transforming) {
                                         vm.end(cancel = true); transforming = true
@@ -449,9 +458,7 @@ private fun InteractiveGrid(state: StudioState, vm: StudioViewModel) {
                                     val center = event.calculateCentroid(useCurrent = false)
                                     val previousZoom = zoom
                                     zoom = (zoom * event.calculateZoom()).coerceIn(0.5f, 16f)
-
-                                    // Allow free panning like Clip Studio without clamping bounds rigidly to edges
-                                    pan = center - (center - pan) * (zoom / previousZoom) + event.calculatePan()
+                                    pan = center - (center - (pan ?: Offset.Zero)) * (zoom / previousZoom) + event.calculatePan()
                                 } else if (!transforming) event.changes.firstOrNull()
                                     ?.let { change ->
                                         val at = position(change.position, activeCellSize)
@@ -464,50 +471,60 @@ private fun InteractiveGrid(state: StudioState, vm: StudioViewModel) {
                             vm.end(cancel = true)
                         }
                     }
-                }) {
-            val cell = size.width / doc.width * zoom
+                }
+        ) {
+            val baseCell = minOf(size.width / doc.width, size.height / doc.height)
+            val cell = baseCell * zoom
+            val p = pan ?: Offset(
+                (size.width - doc.width * baseCell) / 2f,
+                (size.height - doc.height * baseCell) / 2f
+            )
+            val canvasSize = Size(doc.width * cell, doc.height * cell)
 
             drawImage(
                 image = imageBitmap,
-                dstOffset = IntOffset(pan.x.toInt(), pan.y.toInt()),
-                dstSize = IntSize((doc.width * cell).toInt(), (doc.height * cell).toInt()),
+                dstOffset = IntOffset(p.x.toInt(), p.y.toInt()),
+                dstSize = IntSize(canvasSize.width.toInt(), canvasSize.height.toInt()),
                 filterQuality = FilterQuality.None
             )
+            // Border now belongs to the canvas rectangle itself, not the viewport.
+            drawRect(MirageInk, topLeft = Offset(p.x, p.y), size = canvasSize, style = Stroke(2f))
+
             if (state.grid && cell >= 3) {
                 val gridColor = Color(0xff56655b)
                 for (x in 0..doc.width) {
-                    val xPos = pan.x + x * cell
-                    drawLine(gridColor, Offset(xPos, pan.y), Offset(xPos, pan.y + doc.height * cell), strokeWidth = 0.5f)
+                    val xPos = p.x + x * cell
+                    drawLine(gridColor, Offset(xPos, p.y), Offset(xPos, p.y + doc.height * cell), strokeWidth = 0.5f)
                 }
                 for (y in 0..doc.height) {
-                    val yPos = pan.y + y * cell
-                    drawLine(gridColor, Offset(pan.x, yPos), Offset(pan.x + doc.width * cell, yPos), strokeWidth = 0.5f)
+                    val yPos = p.y + y * cell
+                    drawLine(gridColor, Offset(p.x, yPos), Offset(p.x + doc.width * cell, yPos), strokeWidth = 0.5f)
                 }
             }
 
             if (state.mirror == MirrorMode.HORIZONTAL || state.mirror == MirrorMode.BOTH) drawLine(
                 MirageSage,
-                Offset(pan.x + doc.width * cell / 2, 0f),
-                Offset(pan.x + doc.width * cell / 2, size.height),
+                Offset(p.x + doc.width * cell / 2, p.y),
+                Offset(p.x + doc.width * cell / 2, p.y + doc.height * cell),
                 2f
             )
             if (state.mirror == MirrorMode.VERTICAL || state.mirror == MirrorMode.BOTH) drawLine(
                 MirageSage,
-                Offset(0f, pan.y + doc.height * cell / 2),
-                Offset(size.width, pan.y + doc.height * cell / 2),
+                Offset(p.x, p.y + doc.height * cell / 2),
+                Offset(p.x + doc.width * cell, p.y + doc.height * cell / 2),
                 2f
             )
             if (state.tool == PixelTool.TEXT) doc.texts.forEach { b ->
                 drawRect(
                     Color.White,
-                    Offset(pan.x + b.x * cell, pan.y + b.y * cell),
+                    Offset(p.x + b.x * cell, p.y + b.y * cell),
                     Size((b.text.length * (b.glyphWidth + 1) - 1) * cell, b.glyphHeight * cell),
                     style = Stroke(2f)
                 )
             }
             state.selection?.let { sel ->
-                val left = pan.x + sel.left * cell
-                val top = pan.y + sel.top * cell
+                val left = p.x + sel.left * cell
+                val top = p.y + sel.top * cell
                 val w = (sel.right - sel.left + 1) * cell
                 val h = (sel.bottom - sel.top + 1) * cell
                 drawRect(
@@ -525,7 +542,7 @@ private fun InteractiveGrid(state: StudioState, vm: StudioViewModel) {
                 color = MirageMuted,
                 style = MaterialTheme.typography.bodySmall
             )
-            TextButton(onClick = { zoom = 1f; pan = Offset.Zero }) { Text("Căn giữa") }
+            TextButton(onClick = { zoom = 1f; pan = null }) { Text("Căn giữa") }
         }
     }
 }
