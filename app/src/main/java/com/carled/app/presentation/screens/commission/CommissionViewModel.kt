@@ -5,18 +5,34 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.carled.app.core.common.Resource
+import com.carled.app.core.di.ServiceLocator
+import com.carled.app.domain.model.CommissionPriceCalculator
+import com.carled.app.domain.model.CommissionPricingResponse
+import com.carled.app.domain.repository.CommissionPricingRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.util.UUID
 
-internal enum class CommissionType(val label: String) { IMAGE("Image"), GIF("GIF") }
-
-internal enum class CommissionSize(val label: String, val staticPriceVnd: Long) {
-    SQUARE("32 × 32", 50_000L),
-    WIDE("64 × 32", 100_000L)
-}
-
-internal const val COMMISSION_FRAME_PRICE_VND = 50_000L
-// Mobile projects 64 × 32 RGB565 frames (4 KiB each). Eight frames use 32 KiB before filesystem overhead.
-internal const val COMMISSION_MAX_FRAMES = 8
+/**
+ * Replaces the earlier hardcoded CommissionType/CommissionSize mock: the create-
+ * request form is now driven entirely by GET /api/commissions/pricing (AC01/AC02),
+ * so pricing, revision quotas and the option catalog can change server-side
+ * without an app update.
+ *
+ * See CommissionPriceCalculator for how a CUSTOM selection turns into a live
+ * price, and CommissionPricingForm.kt for the Composables that render this.
+ *
+ * WIRING NEEDED: add a `commissionPricingRepository: CommissionPricingRepository`
+ * property to ServiceLocator (same pattern as its other repositories/use-cases),
+ * backed by a Retrofit instance of CommissionPricingApi — e.g.
+ *   val commissionPricingRepository: CommissionPricingRepository by lazy {
+ *       CommissionPricingRepositoryImpl(retrofit.create(CommissionPricingApi::class.java))
+ *   }
+ */
 
 internal data class MockSePayPayment(
     val transferCode: String,
@@ -27,22 +43,12 @@ internal data class MockSePayPayment(
 }
 
 internal data class CommissionDraft(
-    val type: CommissionType = CommissionType.IMAGE,
-    val size: CommissionSize = CommissionSize.SQUARE,
+    val selectedTierCode: String? = null,
+    val selections: Map<String, CommissionPriceCalculator.RuleSelection> = emptyMap(),
     val description: String = "",
-    val frameCount: String = "8",
     val references: List<Uri> = emptyList()
 ) {
-    val priceVnd: Long?
-        get() = when (type) {
-            CommissionType.IMAGE -> size.staticPriceVnd
-            CommissionType.GIF -> frameCount.toIntOrNull()
-                ?.takeIf { it in 2..COMMISSION_MAX_FRAMES }
-                ?.times(COMMISSION_FRAME_PRICE_VND)
-        }
-
-    val isValid: Boolean
-        get() = description.isNotBlank() && priceVnd != null
+    val isBriefValid: Boolean get() = description.isNotBlank()
 }
 
 internal data class CommissionMessage(
@@ -74,8 +80,14 @@ internal data class CommissionRequest(
         }
 }
 
-internal class CommissionViewModel : ViewModel() {
+internal class CommissionViewModel(
+    private val repository: CommissionPricingRepository = ServiceLocator.commissionPricingRepository
+) : ViewModel() {
+
     var draft by mutableStateOf(CommissionDraft())
+
+    // Request list / inbox / mock payment flow — unrelated to this user story,
+    // kept as-is apart from CommissionDraft's new shape.
     var requests by mutableStateOf(
         listOf(
             CommissionRequest(
@@ -101,9 +113,68 @@ internal class CommissionViewModel : ViewModel() {
     )
         private set
 
+    private val _pricing = MutableStateFlow<Resource<CommissionPricingResponse>>(Resource.Loading)
+    val pricing: StateFlow<Resource<CommissionPricingResponse>> = _pricing.asStateFlow()
+
+    init { loadPricing() }
+
+    fun loadPricing() {
+        viewModelScope.launch {
+            _pricing.value = Resource.Loading
+            _pricing.value = repository.getPricing()
+        }
+    }
+
+    /** Called when the user taps a tier card — a fixed preset, or the CUSTOM tier. */
+    fun selectTier(tierCode: String) {
+        draft = draft.copy(selectedTierCode = tierCode)
+    }
+
+    fun selectSingle(ruleKey: String, optionCode: String) {
+        draft = draft.copy(
+            selections = draft.selections + (ruleKey to CommissionPriceCalculator.RuleSelection(selectedOptionCodes = setOf(optionCode)))
+        )
+    }
+
+    fun toggleMulti(ruleKey: String, optionCode: String) {
+        val current = draft.selections[ruleKey]?.selectedOptionCodes.orEmpty()
+        val updated = if (optionCode in current) current - optionCode else current + optionCode
+        draft = draft.copy(
+            selections = draft.selections + (ruleKey to CommissionPriceCalculator.RuleSelection(selectedOptionCodes = updated))
+        )
+    }
+
+    fun setQuantity(ruleKey: String, quantity: Int) {
+        draft = draft.copy(selections = draft.selections + (ruleKey to CommissionPriceCalculator.RuleSelection(quantity = quantity)))
+    }
+
+    fun setText(ruleKey: String, text: String) {
+        draft = draft.copy(selections = draft.selections + (ruleKey to CommissionPriceCalculator.RuleSelection(text = text)))
+    }
+
+    fun updateDescription(text: String) {
+        draft = draft.copy(description = text)
+    }
+
+    fun addReference(uri: Uri, max: Int) {
+        draft = draft.copy(references = (draft.references + uri).distinct().take(max))
+    }
+
+    fun removeReference(uri: Uri) {
+        draft = draft.copy(references = draft.references - uri)
+    }
+
     fun submit(): String? {
-        val amountVnd = draft.priceVnd ?: return null
-        if (!draft.isValid) return null
+        val catalog = (pricing.value as? Resource.Success)?.data ?: return null
+        val tier = catalog.tiers.firstOrNull { it.tierCode == draft.selectedTierCode } ?: return null
+        if (!draft.isBriefValid) return null
+        val amountVnd = if (tier.isCustom) {
+            val result = CommissionPriceCalculator.calculate(catalog.rules, draft.selections)
+            if (result.missingRequiredRuleKeys.isNotEmpty()) return null
+            result.total
+        } else {
+            tier.basePrice
+        }
         val id = UUID.randomUUID().toString().substringBefore('-').uppercase()
         val payment = MockSePayPayment(transferCode = "CM$id", amountVnd = amountVnd)
         requests = listOf(CommissionRequest(id, draft.copy(description = draft.description.trim()), payment = payment)) + requests

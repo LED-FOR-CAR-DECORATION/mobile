@@ -11,8 +11,10 @@ import com.carled.app.data.repository.DeviceClaimRepositoryImpl
 import com.carled.app.data.repository.DeviceRepositoryImpl
 import com.carled.app.data.repository.ProductRepositoryImpl
 import com.carled.app.data.remote.dto.RefreshTokenRequest
+import com.carled.app.data.repository.CommissionPricingRepositoryImpl
 import com.carled.app.domain.repository.AuthRepository
 import com.carled.app.domain.repository.BleDeviceRepository
+import com.carled.app.domain.repository.CommissionPricingRepository
 import com.carled.app.domain.repository.DeviceClaimRepository
 import com.carled.app.domain.repository.DeviceRepository
 import com.carled.app.domain.repository.ProductRepository
@@ -49,11 +51,6 @@ object ServiceLocator {
 
     val gson: Gson = GsonBuilder().create()
 
-    /**
-     * Lightweight client used exclusively for token refresh requests.
-     * No authenticator attached — avoids the circular-dependency problem of
-     * the main client calling itself, and prevents infinite 401 retry loops.
-     */
     private val plainHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -62,7 +59,6 @@ object ServiceLocator {
             .build()
     }
 
-    /** Retrofit instance backed by plainHttpClient — only used inside tokenAuthenticator. */
     private val refreshApiService: ApiService by lazy {
         Retrofit.Builder()
             .baseUrl(BuildConfig.BASE_URL)
@@ -72,19 +68,6 @@ object ServiceLocator {
             .create(ApiService::class.java)
     }
 
-    /**
-     * OkHttp Authenticator that transparently refreshes an expired access token.
-     *
-     * Flow:
-     *  1. Any request returns 401.
-     *  2. OkHttp calls this authenticator on a background thread.
-     *  3. We attempt one refresh via [refreshApiService] (separate client, no auth loop).
-     *  4a. Success → persist new tokens, retry the original request with the new header.
-     *  4b. Failure → clear the session so the app navigates to login on next UI action.
-     *
-     * [responseCount] guards against infinite loops: if we've already retried once
-     * (prior response chain depth > 1) we give up rather than refreshing repeatedly.
-     */
     private val tokenAuthenticator: Authenticator by lazy {
         Authenticator { _, response ->
             if (response.responseCount() > 1) return@Authenticator null
@@ -93,7 +76,6 @@ object ServiceLocator {
                 ?: return@Authenticator run { authRepository.notifySessionExpired(); null }
 
             synchronized(this) {
-                // Another thread may have already refreshed while we waited for the lock.
                 val currentStored = userPreferences.getAuthToken()
                 val requestToken = response.request.header("Authorization")?.removePrefix("Bearer ")
                 if (currentStored != null && currentStored != requestToken) {
@@ -107,17 +89,13 @@ object ServiceLocator {
                         val r = refreshApiService.refreshToken(RefreshTokenRequest(refreshToken))
                         if (r.isSuccessful) r.body()?.data else null
                     } catch (e: java.io.IOException) {
-                        return@runBlocking null // network blip — don't clear session
+                        return@runBlocking null
                     } catch (_: Exception) {
                         null
                     }
                 }
 
                 if (newData == null) {
-                    // Only clear if we got an explicit rejection, not a network failure.
-                    // (IOException path already returned null above without reaching here
-                    //  via the runBlocking early-return; a null from a non-IOException
-                    //  rejection still falls through to this clear.)
                     authRepository.notifySessionExpired()
                     return@Authenticator null
                 }
@@ -184,8 +162,6 @@ object ServiceLocator {
         ProductRepositoryImpl(apiService, gson)
     }
 
-    // Same token source + header format AuthRepositoryImpl uses for
-    // apiService.getCurrentUserProfile("Bearer $token").
     private val deviceAuthHeaderProvider: suspend () -> String? = {
         userPreferences.getAuthToken()?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
     }
@@ -201,6 +177,10 @@ object ServiceLocator {
             gson               = gson,
             authHeaderProvider = deviceAuthHeaderProvider
         )
+    }
+
+    val commissionPricingRepository: CommissionPricingRepository by lazy {
+        CommissionPricingRepositoryImpl(apiService)
     }
 
     val bleUseCases: BleUseCases by lazy {
@@ -242,11 +222,6 @@ object ServiceLocator {
 // Private helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Returns how many responses are chained before this one (1 = first attempt).
- * Used by [ServiceLocator.tokenAuthenticator] to avoid refreshing more than once
- * per original request.
- */
 private fun okhttp3.Response.responseCount(): Int {
     var count = 1
     var prior = priorResponse

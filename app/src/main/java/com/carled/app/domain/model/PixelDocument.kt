@@ -20,7 +20,8 @@ data class PixelText(
     val y: Int,
     val glyphWidth: Int = 3,
     val glyphHeight: Int = 5,
-    val color: Int = 0xff89c89b.toInt()
+    val color: Int = 0xff89c89b.toInt(),
+    val scrolling: Boolean = false // NEW — additive default; existing callers unaffected
 )
 
 data class PixelDocument(
@@ -333,6 +334,34 @@ fun PixelDocument.stampRegion(
     return copy(pixels = out)
 }
 
+/**
+ * For PixelText blocks with scrolling=true: generates a left-scrolling marquee
+ * animation, one PixelDocument snapshot per step, shifting the block left each
+ * frame and wrapping once it's fully exited. composite()'s existing bounds
+ * check (`px in 0 until width`) already clips off-canvas pixels, so no change
+ * to composite()/rgb565() was needed.
+ *
+ * Caps frames at 255 (BLE firmware's animation limit) by widening the
+ * per-frame step if the natural 1px-per-frame cycle would exceed it.
+ */
+fun PixelDocument.scrollFrames(): List<PixelDocument> {
+    val scrollingBlocks = texts.filter { it.scrolling }
+    if (scrollingBlocks.isEmpty()) return listOf(this)
+
+    val cycle = scrollingBlocks.maxOf { block -> width + block.text.length * (block.glyphWidth + 1) }
+    val stepPx = ((cycle + 254) / 255).coerceAtLeast(1)
+
+    return (0 until cycle step stepPx).map { frameIndex ->
+        copy(texts = texts.map { block ->
+            if (!block.scrolling) block
+            else {
+                val travel = width + block.text.length * (block.glyphWidth + 1)
+                block.copy(x = width - (frameIndex % travel))
+            }
+        })
+    }
+}
+
 object PixelFont {
     private val alphabet = mapOf(
         'A' to "010/101/111/101/101", 'B' to "110/101/110/101/110", 'C' to "011/100/100/100/011",
@@ -371,4 +400,10 @@ object PixelFont {
                 block.x >= 0 && block.y >= 0 &&
                 block.x + block.text.length * (block.glyphWidth + 1) - 1 < width &&
                 block.y + block.glyphHeight <= height
+
+    /** Vertical-only check for scrolling text: horizontal overflow is fine (it
+     * scrolls), but the glyph must still fit top-to-bottom and the text must parse. */
+    fun fitsVertical(block: PixelText, height: Int): Boolean =
+        block.text.isNotBlank() && supports(block.text) &&
+                block.x >= 0 && block.y >= 0 && block.y + block.glyphHeight <= height
 }

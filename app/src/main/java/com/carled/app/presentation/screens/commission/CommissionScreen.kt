@@ -46,6 +46,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.carled.app.R
+import com.carled.app.core.common.Resource
+import com.carled.app.domain.model.CommissionPriceCalculator
 import com.carled.app.domain.model.User
 import com.carled.app.presentation.components.MirageButton
 import com.carled.app.presentation.components.WindowFrame
@@ -161,95 +163,114 @@ internal fun CommissionScreen(user: User, modifier: Modifier = Modifier) {
 @Composable
 private fun CommissionForm(user: User, model: CommissionViewModel, onSubmit: (String) -> Unit) {
     val draft = model.draft
-    var choosingType by remember { mutableStateOf(false) }
-    var choosingSize by remember { mutableStateOf(false) }
+    val pricingState by model.pricing.collectAsState()
     var editingBrief by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = editingBrief) { editingBrief = false }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
-            val current = model.draft
-            model.draft = current.copy(references = (current.references + uri).distinct().take(MAX_REFERENCES))
-        }
+        if (uri != null) model.addReference(uri, MAX_REFERENCES)
     }
 
-    if (!editingBrief) {
-        CommissionPanel("Choose design and price") {
-            Text("LED matrix size", color = Ink, style = MaterialTheme.typography.labelLarge)
-            Box {
-                MirageButton(draft.size.label, { choosingSize = true }, secondary = true)
-                DropdownMenu(expanded = choosingSize, onDismissRequest = { choosingSize = false }) {
-                    CommissionSize.entries.forEach { size ->
-                        DropdownMenuItem(text = { Text(size.label) }, onClick = {
-                            model.draft = draft.copy(size = size)
-                            choosingSize = false
-                        })
-                    }
-                }
-            }
-            Text("Commission type", color = Ink, style = MaterialTheme.typography.labelLarge)
-            Box {
-                MirageButton(draft.type.label, { choosingType = true }, secondary = true)
-                DropdownMenu(expanded = choosingType, onDismissRequest = { choosingType = false }) {
-                    CommissionType.entries.forEach { type ->
-                        DropdownMenuItem(text = { Text(type.label) }, onClick = {
-                            model.draft = draft.copy(type = type)
-                            choosingType = false
-                        })
-                    }
-                }
-            }
-            Text("Static image: 32 × 32 · 50,000 VND / 64 × 32 · 100,000 VND", color = Ink)
-            Text("Animated GIF: 50,000 VND per frame", color = Ink)
-            if (draft.type == CommissionType.GIF) {
-                CommissionField(draft.frameCount, { model.draft = draft.copy(frameCount = it) },
-                    "Frame count (2–$COMMISSION_MAX_FRAMES)", numeric = true)
-            }
-            draft.priceVnd?.let { Text("Total: ${formatVnd(it)}", color = Ink, fontWeight = FontWeight.Bold) }
-            MirageButton("Continue to brief", { editingBrief = true }, Modifier.fillMaxWidth(), enabled = draft.priceVnd != null)
+    when (val state = pricingState) {
+        is Resource.Loading -> CommissionPanel("Choose design and price") {
+            CircularProgressIndicator(color = Ink)
+            Text("Đang tải bảng giá…", color = Ink)
         }
-    } else {
-        CommissionPanel("Design brief") {
-            Text("${draft.size.label} · ${draft.type.label} · ${formatVnd(requireNotNull(draft.priceVnd))}", color = Ink)
-            TextButton(onClick = { editingBrief = false }) { Text("Change design", color = Ink) }
-            CommissionField(user.fullName?.takeIf { it.isNotBlank() } ?: user.id, {}, "Username (user ID)", readOnly = true)
-            CommissionField(draft.description, { model.draft = draft.copy(description = it) }, "Description", multiline = true)
-            Text("Reference images (optional, up to $MAX_REFERENCES)", style = MaterialTheme.typography.labelLarge, color = Ink)
-            (draft.references.map<Uri, Uri?> { it } +
-                List(minOf(3, MAX_REFERENCES - draft.references.size)) { null }).chunked(3).forEach { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { uri ->
-                        val slot = Modifier.weight(1f).height(72.dp).background(Cream).border(1.dp, Ink)
-                        if (uri == null) {
-                            Box(
-                                slot.clickable(role = Role.Button) { picker.launch(ImagePickerRequest) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.NoteAdd, "Add reference image", tint = Ink, modifier = Modifier.size(34.dp))
+        is Resource.Error -> CommissionPanel("Choose design and price") {
+            Text(state.message ?: "Không tải được bảng giá.", color = Ink)
+            MirageButton("Thử lại", model::loadPricing)
+        }
+        is Resource.Success -> {
+            val catalog = state.data
+            val selectedTier = catalog.tiers.firstOrNull { it.tierCode == draft.selectedTierCode }
+            val visibleRules = remember(catalog.rules, draft.selections) {
+                CommissionPriceCalculator.visibleRulesInOrder(catalog.rules, draft.selections)
+            }
+            val priceResult = remember(catalog.rules, draft.selections) {
+                CommissionPriceCalculator.calculate(catalog.rules, draft.selections)
+            }
+            val selectedOptionIds = remember(catalog.rules, draft.selections) {
+                catalog.rules.flatMap { rule ->
+                    rule.options.filter { it.optionCode in draft.selections[rule.ruleKey]?.selectedOptionCodes.orEmpty() }
+                }.map { it.optionId }.toSet()
+            }
+
+            if (!editingBrief) {
+                CommissionPanel("Choose design and price") {
+                    Text("Configure your request", color = Ink, style = MaterialTheme.typography.labelLarge)
+                    visibleRules.forEach { rule ->
+                        PricingRuleRow(
+                            rule = rule,
+                            selection = draft.selections[rule.ruleKey],
+                            onSelectSingle = { code -> model.selectSingle(rule.ruleKey, code) },
+                            onToggleMulti = { code -> model.toggleMulti(rule.ruleKey, code) },
+                            onQuantityChange = { qty -> model.setQuantity(rule.ruleKey, qty) },
+                            onTextChange = { text -> model.setText(rule.ruleKey, text) }
+                        )
+                    }
+                    Text("Choose a package", color = Ink, style = MaterialTheme.typography.labelLarge)
+                    catalog.tiers.sortedBy { it.displayOrder }.forEach { tier ->
+                        val eligible = tier.triggerOptionIds.isEmpty() || tier.triggerOptionIds.any { it in selectedOptionIds }
+                        TierCard(
+                            tier = tier,
+                            selected = draft.selectedTierCode == tier.tierCode,
+                            liveCustomTotal = if (tier.isCustom) priceResult.total else null,
+                            eligible = eligible,
+                            onSelect = { model.selectTier(tier.tierCode) }
+                        )
+                    }
+                    val canContinue = selectedTier != null &&
+                            (!selectedTier.isCustom || priceResult.missingRequiredRuleKeys.isEmpty())
+                    MirageButton("Continue to brief", { editingBrief = true }, Modifier.fillMaxWidth(), enabled = canContinue)
+                }
+            } else {
+                val priceVnd = if (selectedTier?.isCustom == true) priceResult.total else selectedTier?.basePrice
+                CommissionPanel("Design brief") {
+                    Text(
+                        "${selectedTier?.tierName.orEmpty()} · ${priceVnd?.let { formatVnd(it) }.orEmpty()}",
+                        color = Ink
+                    )
+                    TextButton(onClick = { editingBrief = false }) { Text("Change design", color = Ink) }
+                    CommissionField(user.fullName?.takeIf { it.isNotBlank() } ?: user.id, {}, "Username (user ID)", readOnly = true)
+                    CommissionField(draft.description, model::updateDescription, "Description", multiline = true)
+                    Text("Reference images (optional, up to $MAX_REFERENCES)", style = MaterialTheme.typography.labelLarge, color = Ink)
+                    (draft.references.map<Uri, Uri?> { it } +
+                            List(minOf(3, MAX_REFERENCES - draft.references.size)) { null }).chunked(3).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { uri ->
+                                val slot = Modifier.weight(1f).height(72.dp).background(Cream).border(1.dp, Ink)
+                                if (uri == null) {
+                                    Box(
+                                        slot.clickable(role = Role.Button) { picker.launch(ImagePickerRequest) },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.NoteAdd, "Add reference image", tint = Ink, modifier = Modifier.size(34.dp))
+                                    }
+                                } else {
+                                    Box(slot) {
+                                        AttachmentPreview(uri, "Reference image", Modifier.fillMaxSize())
+                                        TextButton(
+                                            onClick = { model.removeReference(uri) },
+                                            modifier = Modifier.align(Alignment.TopEnd).size(44.dp),
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) { Text("×", color = Ink, modifier = Modifier.background(Cream)) }
+                                    }
+                                }
                             }
-                        } else {
-                            Box(slot) {
-                                AttachmentPreview(uri, "Reference image", Modifier.fillMaxSize())
-                                TextButton(
-                                    onClick = { model.draft = draft.copy(references = draft.references - uri) },
-                                    modifier = Modifier.align(Alignment.TopEnd).size(44.dp),
-                                    contentPadding = PaddingValues(0.dp)
-                                ) { Text("×", color = Ink, modifier = Modifier.background(Cream)) }
-                            }
+                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    MirageButton("Continue to payment", {
+                        editingBrief = false
+                        model.submit()?.let(onSubmit)
+                    }, Modifier.fillMaxWidth(), enabled = draft.isBriefValid, secondary = true)
                 }
             }
-            MirageButton("Continue to payment", {
-                editingBrief = false
-                model.submit()?.let(onSubmit)
-            }, Modifier.fillMaxWidth(), enabled = draft.isValid, secondary = true)
         }
     }
 }
 
 @Composable
-private fun CommissionField(
+internal fun CommissionField(
     value: String,
     onChange: (String) -> Unit,
     label: String,

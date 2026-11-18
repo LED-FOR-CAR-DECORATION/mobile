@@ -11,6 +11,7 @@ sealed class NavRoute(val route: String) {
     object Effect : NavRoute("effect")
     object Photo : NavRoute("image")
     object Marquee : NavRoute("marquee")
+    object Commission : NavRoute("commission")
 
     object Studio : NavRoute("studio?draft={draft}") {
         fun create(draftId: String? = null) = "studio?draft=${Uri.encode(draftId.orEmpty())}"

@@ -25,7 +25,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
 
 data class TextProfilesState(val entries: List<TextProfile> = emptyList(), val plan: TextProfilePlan = TextProfilePlan.BASIC,
-    val selectedId: String? = null, val busy: Boolean = false, val loaded: Boolean = false, val error: String? = null)
+                             val selectedId: String? = null, val busy: Boolean = false, val loaded: Boolean = false, val error: String? = null)
 
 class MarqueeViewModel(private val bleUseCases: BleUseCases, private val profileStore: TextProfileRepository? = null) : ViewModel() {
 
@@ -154,33 +154,43 @@ class MarqueeViewModel(private val bleUseCases: BleUseCases, private val profile
         _uiState.update { it.copy(isSending = true, feedbackMessage = null) }
         viewModelScope.launch {
             try {
-            coroutineScope {
-            val static = state.scrollMode != "scroll_left"
-            val blink = state.scrollMode == "blink"
-            val ack = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(if (static) 30000L else 10000L) {
-                bleUseCases.getTelemetryEvent().first {
-                    if (static) it is TelemetryEvent.UploadComplete || it is TelemetryEvent.UploadError
-                    else it is TelemetryEvent.MarqueeActive && it.text == cleanText
+                coroutineScope {
+                    val static = state.scrollMode != "scroll_left"
+                    val blink = state.scrollMode == "blink"
+                    val ack = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(if (static) 30000L else 10000L) {
+                        bleUseCases.getTelemetryEvent().first {
+                            if (static) it is TelemetryEvent.UploadComplete || it is TelemetryEvent.UploadError
+                            else it is TelemetryEvent.MarqueeActive && it.text == cleanText
+                        }
+                    } }
+                    if (static) {
+                        val color = (0xff shl 24) or (state.r shl 16) or (state.g shl 8) or state.b
+                        if (blink) bleUseCases.uploadProjection(
+                            rgb565Data = layout.projection(true, color),
+                            width = 64,
+                            height = 32,
+                            frameCount = 2,
+                            frameDelayMs = MarqueeLayout.BLINK_FRAME_DELAY_MS
+                        )
+                        else bleUseCases.uploadProjection(
+                            rgb565Data = layout.projection(false, color),
+                            width = 64,
+                            height = 32
+                        )
+                    } else bleUseCases.sendMarquee(
+                        text       = cleanText,
+                        r          = state.r,
+                        g          = state.g,
+                        b          = state.b,
+                        speed      = state.speed,
+                        size       = state.size,
+                        rainbow    = state.rainbow,
+                        scrollMode = state.scrollMode
+                    )
+                    val event = ack.await()
+                    if (event is TelemetryEvent.UploadError) error("LED báo lỗi: ${event.error}")
+                    _uiState.update { it.copy(lastEventText = cleanText, feedbackMessage = if (static) "LED đã xác nhận ${if (blink) "chữ nhấp nháy" else "chữ tĩnh"} · ${layout.glyphLabel} · ${layout.lines.size} dòng." else "Thiết bị đã xác nhận hiển thị chữ.") }
                 }
-            } }
-            if (static) {
-                val color = (0xff shl 24) or (state.r shl 16) or (state.g shl 8) or state.b
-                if (blink) bleUseCases.uploadProjection(layout.projection(true, color), frameCount = 2, frameDelayMs = MarqueeLayout.BLINK_FRAME_DELAY_MS)
-                else bleUseCases.uploadProjection(layout.projection(false, color))
-            } else bleUseCases.sendMarquee(
-                text       = cleanText,
-                r          = state.r,
-                g          = state.g,
-                b          = state.b,
-                speed      = state.speed,
-                size       = state.size,
-                rainbow    = state.rainbow,
-                scrollMode = state.scrollMode
-            )
-            val event = ack.await()
-            if (event is TelemetryEvent.UploadError) error("LED báo lỗi: ${event.error}")
-            _uiState.update { it.copy(lastEventText = cleanText, feedbackMessage = if (static) "LED đã xác nhận ${if (blink) "chữ nhấp nháy" else "chữ tĩnh"} · ${layout.glyphLabel} · ${layout.lines.size} dòng." else "Thiết bị đã xác nhận hiển thị chữ.") }
-            }
             } catch (e: TimeoutCancellationException) {
                 _uiState.update { it.copy(feedbackMessage = "Chưa nhận xác nhận từ LED. Kiểm tra kết nối.") }
             } catch (e: CancellationException) { throw e }
@@ -214,4 +224,3 @@ class MarqueeViewModel(private val bleUseCases: BleUseCases, private val profile
         }
     }
 }
-

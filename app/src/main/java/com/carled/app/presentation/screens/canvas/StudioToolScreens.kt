@@ -187,19 +187,27 @@ fun PixelTextDialog(doc: PixelDocument, color: Int, vm: StudioViewModel, close: 
     var font by remember {
         mutableStateOf(initial?.let { it.glyphWidth to it.glyphHeight } ?: (3 to 5))
     }
-    var x by remember { mutableIntStateOf(initial?.x ?: 0) }
-    var y by remember { mutableIntStateOf(initial?.y ?: 0) }
+    // CHANGED: default position is now the center of the canvas instead of (0,0).
+    var x by remember { mutableIntStateOf(initial?.x ?: ((doc.width - (3 + 1) - 1).coerceAtLeast(0)) / 2) }
+    var y by remember { mutableIntStateOf(initial?.y ?: ((doc.height - 5) / 2).coerceAtLeast(0)) }
     var textColor by remember { mutableIntStateOf(initial?.color ?: color) }
     var customColor by remember { mutableStateOf(false) }
     var delete by remember { mutableStateOf(false) }
 
-    var scrollMode by remember { mutableStateOf("scroll_left") }
-    val block = PixelText(selected ?: "new", text, x, y, font.first, font.second, textColor)
-    val valid = PixelFont.fits(block, doc.width, doc.height)
-    val supported = PixelFont.supports(text)
     val textWidth = (text.length * (font.first + 1) - 1).coerceAtLeast(0)
     val maxX = (doc.width - textWidth).coerceAtLeast(0)
     val maxY = (doc.height - font.second).coerceAtLeast(0)
+
+    // NEW: overflow is now detected and handled by auto-enabling scroll, instead
+    // of just blocking Apply. scrolling is derived, not a separate manual toggle.
+    val overflowsHorizontally = text.isNotBlank() && (x + textWidth) >= doc.width
+    val scrolling = overflowsHorizontally
+
+    val block = PixelText(selected ?: "new", text, x, y, font.first, font.second, textColor, scrolling = scrolling)
+    val supported = PixelFont.supports(text)
+    val valid = supported && PixelFont.fitsVertical(block, doc.height) &&
+            (overflowsHorizontally || PixelFont.fits(block, doc.width, doc.height))
+
     fun move(dx: Int, dy: Int) {
         x = (x + dx).coerceIn(0, maxX); y = (y + dy).coerceIn(0, maxY)
     }
@@ -288,8 +296,9 @@ fun PixelTextDialog(doc: PixelDocument, color: Int, vm: StudioViewModel, close: 
                     Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    // CHANGED: reset to center instead of (0,0).
                     ChoiceTile("+ Khối mới", selected == null) {
-                        selected = null; text = ""; x = 0; y = 0
+                        selected = null; text = ""; x = maxX / 2; y = maxY / 2
                     }
                     doc.texts.forEach { b ->
                         ChoiceTile(b.text, selected == b.id) {
@@ -319,35 +328,44 @@ fun PixelTextDialog(doc: PixelDocument, color: Int, vm: StudioViewModel, close: 
                                 text = ""
                             }) { Icon(Icons.Default.Cancel, "Xóa văn bản") }
                         })
+                    // CHANGED: overflow is no longer just an error — it's now a
+                    // supported state (auto-scroll), with its own neutral message.
                     if (!supported) Text(
                         "Ký tự chưa hỗ trợ. Hãy dùng tiếng Việt không dấu, ví dụ XE HOI.",
                         color = MaterialTheme.colorScheme.error
                     )
+                    else if (overflowsHorizontally) Text(
+                        "Chữ vượt khổ canvas — sẽ tự động cuộn trái khi hiển thị trên LED.",
+                        color = MirageMuted
+                    )
                     else if (text.isNotBlank() && !valid) Text(
-                        "Khối chữ vượt khổ ${doc.width}×${doc.height}. Hãy giảm cỡ font hoặc rút ngắn nội dung.",
+                        "Khối chữ vượt khổ chiều cao ${doc.height}px. Hãy giảm cỡ font.",
                         color = MaterialTheme.colorScheme.error
                     )
 
                     Text("Kiểu hiệu ứng Marquee", style = MaterialTheme.typography.titleSmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        listOf("scroll_left" to "Cuộn trái", "static" to "Đứng yên", "blink" to "Nhấp nháy").forEach { (m, lbl) ->
-                            ChoiceTile(lbl, scrollMode == m, Modifier.weight(1f)) { scrollMode = m }
-                        }
-                    }
+                    Text(
+                        if (scrolling) "Cuộn trái (tự động do chữ vượt khổ)" else "Đứng yên (vừa khổ canvas)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MirageMuted
+                    )
 
+                    // NEW: more sizing options, all exact multiples of the base 3×5
+                    // glyph (3×5, 6×10, 9×15, 12×20) scale with zero rounding
+                    // artifacts in PixelDocument.composite()'s nearest-neighbor
+                    // scaling — marked "✓". The existing 5×7/7×9 are kept as-is.
                     Text("Kích thước font Bitmap", style = MaterialTheme.typography.titleSmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(3 to 5, 5 to 7, 7 to 9).forEach { size ->
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(3 to 5, 5 to 7, 6 to 10, 7 to 9, 9 to 15, 12 to 20).forEach { size ->
+                            val clean = size.first % 3 == 0 && size.second % 5 == 0
                             ChoiceTile(
-                                "${size.first} × ${size.second} px",
+                                "${size.first}×${size.second}" + if (clean) " ✓" else "",
                                 font == size,
                                 Modifier.weight(1f)
                             ) {
                                 font = size
                                 x = x.coerceAtMost(
-                                    (doc.width - (text.length * (size.first + 1) - 1)).coerceAtLeast(
-                                        0
-                                    )
+                                    (doc.width - (text.length * (size.first + 1) - 1)).coerceAtLeast(0)
                                 )
                                 y = y.coerceAtMost(doc.height - size.second)
                             }
@@ -370,9 +388,12 @@ fun PixelTextDialog(doc: PixelDocument, color: Int, vm: StudioViewModel, close: 
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // CHANGED: X controls disabled while scrolling, since
+                        // scrollFrames() overrides x every frame — editing it
+                        // manually would have no visible effect and confuse users.
                         IconButton(
                             onClick = { move(-1, 0) },
-                            enabled = x > 0
+                            enabled = x > 0 && !scrolling
                         ) { Icon(Icons.Default.ArrowLeft, "Dịch trái 1 pixel") }
                         Column {
                             IconButton(
@@ -386,7 +407,7 @@ fun PixelTextDialog(doc: PixelDocument, color: Int, vm: StudioViewModel, close: 
                         }
                         IconButton(
                             onClick = { move(1, 0) },
-                            enabled = x < maxX
+                            enabled = x < maxX && !scrolling
                         ) { Icon(Icons.Default.ArrowRight, "Dịch phải 1 pixel") }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -396,7 +417,8 @@ fun PixelTextDialog(doc: PixelDocument, color: Int, vm: StudioViewModel, close: 
                             label = { Text("Vị trí X") },
                             modifier = Modifier.weight(1f),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true
+                            singleLine = true,
+                            enabled = !scrolling
                         )
                         OutlinedTextField(
                             y.toString(),

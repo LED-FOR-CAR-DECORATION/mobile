@@ -18,6 +18,7 @@ import com.carled.app.data.remote.dto.ResendVerificationRequest
 import com.carled.app.data.remote.dto.ResetPasswordRequest
 import com.carled.app.data.remote.dto.UserProfileResponse
 import com.carled.app.data.remote.dto.VerifyEmailRequest
+import com.carled.app.domain.model.CommissionPricingResponse
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -56,14 +57,6 @@ interface ApiService {
     @POST("api/auth/google")
     suspend fun googleAuth(@Body request: GoogleAuthRequest): Response<LoginResponse>
 
-    /**
-     * Logout — always send the refresh token so the server can revoke the session.
-     * The previous parameterless overload was removed: it never invalidated the
-     * refresh token server-side, leaving the session live until natural expiry.
-     *
-     * AuthRepositoryImpl / LogoutUseCase must supply both the Authorization header
-     * and the stored refresh token in the body.
-     */
     @POST("api/auth/logout")
     suspend fun logout(
         @Header("Authorization") authorization: String,
@@ -99,11 +92,6 @@ interface ApiService {
         @Body request: ClaimDeviceRequest
     ): Response<ClaimDeviceResponse>
 
-    /**
-     * GET /api/devices
-     * Retrieves the paginated list of bound devices.
-     * Default page is set to 0 to satisfy server validation: page >= 0.
-     */
     @GET("api/devices")
     suspend fun getDevices(
         @Header("Authorization") authorization: String,
@@ -111,13 +99,17 @@ interface ApiService {
         @Query("size") size: Int = 20
     ): Response<ApiResponse<List<DeviceDto>>>
 
-    /**
-     * GET /api/devices/{id}
-     * Retrieves detailed information for a specific device by its numeric ID (> 0).
-     */
     @GET("api/devices/{id}")
     suspend fun getDeviceById(
         @Header("Authorization") authorization: String,
         @Path("id") id: Long
     ): Response<ApiResponse<DeviceDetailDto>>
+
+    // -------------------------------------------------------------------------
+    // Commissions
+    // -------------------------------------------------------------------------
+
+    /** GET /api/commissions/pricing — permitAll, no auth header needed. */
+    @GET("api/commissions/pricing")
+    suspend fun getCommissionPricing(): Response<ApiResponse<CommissionPricingResponse>>
 }

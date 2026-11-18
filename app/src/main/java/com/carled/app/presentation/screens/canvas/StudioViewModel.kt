@@ -18,6 +18,7 @@ import com.carled.app.domain.model.PixelTool
 import com.carled.app.domain.model.TelemetryEvent
 import com.carled.app.domain.model.clearRegion
 import com.carled.app.domain.model.regionPixels
+import com.carled.app.domain.model.scrollFrames
 import com.carled.app.domain.model.stampRegion
 import com.carled.app.domain.usecase.ble.BleUseCases
 import kotlinx.coroutines.CancellationException
@@ -616,7 +617,16 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
                                     .first { it is TelemetryEvent.UploadComplete || it is TelemetryEvent.UploadError }
                             }
                         }
-                        ble.uploadProjection(d.rgb565())
+
+                        val frames = d.scrollFrames()
+                        val combined = frames.map { it.rgb565() }.reduce { acc, f -> acc + f }
+                        ble.uploadProjection(
+                            rgb565Data = combined,
+                            width = d.width,
+                            height = d.height,
+                            frameCount = frames.size,
+                            frameDelayMs = if (frames.size > 1) 80 else 200
+                        )
                         when (val event = ack.await()) {
                             is TelemetryEvent.UploadComplete -> {
                                 if (epoch != generation) error("Kết nối đã thay đổi trong khi lưu. Hãy kiểm tra và lưu lại.")

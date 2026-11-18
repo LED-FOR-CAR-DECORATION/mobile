@@ -2,6 +2,7 @@ package com.carled.app.presentation.screens.claim
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -47,6 +48,22 @@ fun ClaimDeviceScreen(
     val uiState by vm.uiState.collectAsState()
     val autoConnect by vm.autoConnect.collectAsState()
 
+    var hasBlePermission by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+            else true // BLUETOOTH_CONNECT doesn't exist pre-S; legacy BLUETOOTH is a manifest-only normal permission
+        )
+    }
+    val blePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> hasBlePermission = granted }
+
+    LaunchedEffect(Unit) {
+        if (!hasBlePermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            blePermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        }
+    }
     var hasCameraPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
