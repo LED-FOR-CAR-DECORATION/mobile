@@ -1,8 +1,6 @@
 package com.carled.app.presentation.screens.scan
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,13 +16,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.carled.app.data.ble.bleScanPermissions
 import com.carled.app.data.ble.readBleScanBlocker
-import com.carled.app.domain.model.BleScanBlocker
+import com.carled.app.domain.model.ble.BleScanBlocker
 import com.carled.app.domain.model.ConnectionState
 import com.carled.app.presentation.components.*
 

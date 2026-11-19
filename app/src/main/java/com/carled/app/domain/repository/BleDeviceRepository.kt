@@ -1,7 +1,7 @@
 package com.carled.app.domain.repository
 
 import com.carled.app.data.ble.TouchPoint
-import com.carled.app.domain.model.BleDeviceModel
+import com.carled.app.domain.model.ble.BleDeviceModel
 import com.carled.app.domain.model.ConnectionState
 import com.carled.app.domain.model.DeviceTelemetryStatus
 import com.carled.app.domain.model.LedControlState

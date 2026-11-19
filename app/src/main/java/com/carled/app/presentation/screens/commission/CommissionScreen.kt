@@ -6,7 +6,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,26 +28,25 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.carled.app.R
 import com.carled.app.core.common.Resource
-import com.carled.app.domain.model.CommissionPriceCalculator
-import com.carled.app.domain.model.User
+import com.carled.app.domain.model.*
+import com.carled.app.domain.model.commission.CommissionMessageResponse
+import com.carled.app.domain.model.commission.CommissionPriceCalculator
+import com.carled.app.domain.model.commission.CommissionResponse
+import com.carled.app.domain.model.commission.CommissionSummaryResponse
+import com.carled.app.domain.model.commission.isChatActive
 import com.carled.app.presentation.components.MirageButton
 import com.carled.app.presentation.components.WindowFrame
 import com.carled.app.presentation.theme.Cream
@@ -56,20 +54,18 @@ import com.carled.app.presentation.theme.Green
 import com.carled.app.presentation.theme.GreenLight
 import com.carled.app.presentation.theme.Ink
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import java.net.URL
 import java.text.NumberFormat
 import java.util.Locale
 
 private const val MAX_REFERENCES = 5
 private val CardShape = RoundedCornerShape(3.dp)
-private fun formatVnd(amount: Long) =
+private fun formatVnd(amount: Double) =
     NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN")).format(amount) + " VND"
 private val ImagePickerRequest = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-private val Steps = listOf(
-    "Request created", "Staff is checking the request", "Staff approved the request",
-    "Payment completed", "Assigning a designer", "Commission is in progress", "Commission completed"
-)
 
 private enum class CommissionTab(val label: String) {
     CREATE("Create request"), PROGRESS("Progress tracking"), INBOX("Inbox")
@@ -79,12 +75,9 @@ private enum class CommissionTab(val label: String) {
 internal fun CommissionScreen(user: User, modifier: Modifier = Modifier) {
     val model: CommissionViewModel = viewModel(key = "commission:${user.id}")
     var tab by rememberSaveable(user.id) { mutableStateOf(CommissionTab.CREATE) }
-    var selectedId by rememberSaveable(user.id) { mutableStateOf<String?>(null) }
-    var paymentId by rememberSaveable(user.id) { mutableStateOf<String?>(null) }
-    var conversationId by rememberSaveable(user.id) { mutableStateOf<String?>(null) }
-    val request = model.requests.firstOrNull { it.id == selectedId }
-    val checkout = model.requests.firstOrNull { it.id == paymentId }
-    val conversation = model.requests.firstOrNull { it.id == conversationId && it.payment?.isPaid != false }
+    var selectedId by rememberSaveable(user.id) { mutableStateOf<Long?>(null) }
+    var conversationId by rememberSaveable(user.id) { mutableStateOf<Long?>(null) }
+    var paymentCode by rememberSaveable(user.id) { mutableStateOf<String?>(null) }
 
     Column(modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().selectableGroup()) {
@@ -94,7 +87,10 @@ internal fun CommissionScreen(user: User, modifier: Modifier = Modifier) {
                     Modifier.weight(1f)
                         .background(if (selected) GreenLight else Cream)
                         .border(0.5.dp, Ink)
-                        .selectable(selected, role = Role.Tab) { tab = item }
+                        .selectable(selected, role = Role.Tab) {
+                            tab = item
+                            if (item == CommissionTab.PROGRESS || item == CommissionTab.INBOX) model.loadCommissions()
+                        }
                         .padding(horizontal = 4.dp, vertical = 12.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -108,25 +104,49 @@ internal fun CommissionScreen(user: User, modifier: Modifier = Modifier) {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 when (tab) {
-                    CommissionTab.CREATE -> CommissionForm(user, model) { id ->
+                    CommissionTab.CREATE -> CommissionForm(user, model) { id, code ->
                         tab = CommissionTab.PROGRESS
-                        paymentId = id
+                        selectedId = id
+                        model.loadDetail(id)
+                        if (code != null) paymentCode = code
                     }
-                    CommissionTab.PROGRESS -> CommissionPanel("Progress tracking") {
-                        model.requests.forEach { item ->
-                            RequestCard(item, item.draft.description, item.status) { selectedId = item.id }
+                    CommissionTab.PROGRESS -> {
+                        val commissionsState by model.commissions.collectAsState()
+                        CommissionPanel("Progress tracking") {
+                            when (val state = commissionsState) {
+                                is Resource.Loading -> { CircularProgressIndicator(color = Ink); Text("Đang tải…", color = Ink) }
+                                is Resource.Error -> {
+                                    Text(state.message, color = Ink)
+                                    MirageButton("Thử lại", { model.loadCommissions() })
+                                }
+                                is Resource.Success -> {
+                                    if (state.data.isEmpty()) Text("Chưa có yêu cầu commission nào.", color = Ink)
+                                    state.data.forEach { item ->
+                                        RequestCard(item) {
+                                            selectedId = item.commissionId
+                                            model.loadDetail(item.commissionId)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
-                    CommissionTab.INBOX -> CommissionPanel("Incoming messages") {
-                        model.requests.filter { it.messages.isNotEmpty() }.forEach { item ->
-                            val last = item.messages.last()
-                            val sender = if (last.outgoing) "You" else "Staff"
-                            RequestCard(item, "$sender: ${last.preview}") { selectedId = item.id }
-                        }
-                        SectionTitle("Notifications", Modifier.padding(top = 8.dp))
-                        model.requests.forEach { item ->
-                            item.notification?.let { notification ->
-                                RequestCard(item, notification) { selectedId = item.id }
+                    CommissionTab.INBOX -> {
+                        val commissionsState by model.commissions.collectAsState()
+                        CommissionPanel("Incoming messages") {
+                            when (val state = commissionsState) {
+                                is Resource.Loading -> CircularProgressIndicator(color = Ink)
+                                is Resource.Error -> {
+                                    Text(state.message, color = Ink)
+                                    MirageButton("Thử lại", { model.loadCommissions() })
+                                }
+                                is Resource.Success -> {
+                                    val chatty = state.data.filter { it.isChatActive }
+                                    if (chatty.isEmpty()) Text("Chưa có cuộc trò chuyện nào.", color = Ink)
+                                    chatty.forEach { item ->
+                                        RequestCard(item) { conversationId = item.commissionId }
+                                    }
+                                }
                             }
                         }
                     }
@@ -134,36 +154,42 @@ internal fun CommissionScreen(user: User, modifier: Modifier = Modifier) {
             }
         }
     }
-    if (checkout?.payment != null) {
-        MockSePayCheckout(
-            checkout.payment,
-            onClose = { paymentId = null },
-            onConfirm = { model.simulateSePayReceipt(checkout.id) },
-            onOpenChat = {
-                paymentId = null
-                tab = CommissionTab.INBOX
-                conversationId = checkout.id
-            }
-        )
-    } else if (conversation != null) {
-        CommissionConversation(conversation, { conversationId = null }) { model.send(conversation.id, it) }
-    } else if (request != null) {
-        val close = { selectedId = null }
-        if (tab == CommissionTab.INBOX) {
-            CommissionConversation(request, close) { model.send(request.id, it) }
-        } else {
-            CommissionTimeline(request, close) {
-                selectedId = null
-                paymentId = request.id
+
+    paymentCode?.let { code ->
+        PaymentDialog(code, model, onClose = { paymentCode = null })
+    }
+    if (paymentCode == null) {
+        conversationId?.let { id ->
+            CommissionConversation(id, model, onClose = { conversationId = null })
+        }
+    }
+    if (conversationId == null && paymentCode == null) {
+        selectedId?.let { id ->
+            val detailState by model.detail.collectAsState()
+            when (val state = detailState[id]) {
+                is Resource.Success -> CommissionTimeline(
+                    state.data,
+                    model,
+                    onClose = { selectedId = null },
+                    onOpenChat = { selectedId = null; conversationId = id },
+                    onOpenPayment = { code -> paymentCode = code }
+                )
+                is Resource.Error -> Dialog(onDismissRequest = { selectedId = null }) {
+                    WindowFrame("Lỗi", Modifier.fillMaxWidth(), onClose = { selectedId = null }, compact = true) {
+                        Text(state.message, color = Ink)
+                    }
+                }
+                else -> Unit
             }
         }
     }
 }
 
 @Composable
-private fun CommissionForm(user: User, model: CommissionViewModel, onSubmit: (String) -> Unit) {
+private fun CommissionForm(user: User, model: CommissionViewModel, onSubmit: (Long, String?) -> Unit) {
     val draft = model.draft
     val pricingState by model.pricing.collectAsState()
+    val submissionState by model.submission.collectAsState()
     var editingBrief by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = editingBrief) { editingBrief = false }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -176,7 +202,7 @@ private fun CommissionForm(user: User, model: CommissionViewModel, onSubmit: (St
             Text("Đang tải bảng giá…", color = Ink)
         }
         is Resource.Error -> CommissionPanel("Choose design and price") {
-            Text(state.message ?: "Không tải được bảng giá.", color = Ink)
+            Text(state.message, color = Ink)
             MirageButton("Thử lại", model::loadPricing)
         }
         is Resource.Success -> {
@@ -226,11 +252,12 @@ private fun CommissionForm(user: User, model: CommissionViewModel, onSubmit: (St
                 val priceVnd = if (selectedTier?.isCustom == true) priceResult.total else selectedTier?.basePrice
                 CommissionPanel("Design brief") {
                     Text(
-                        "${selectedTier?.tierName.orEmpty()} · ${priceVnd?.let { formatVnd(it) }.orEmpty()}",
+                        "${selectedTier?.tierName.orEmpty()} · ${priceVnd?.let { formatVnd(it.toDouble()) }.orEmpty()}",
                         color = Ink
                     )
                     TextButton(onClick = { editingBrief = false }) { Text("Change design", color = Ink) }
                     CommissionField(user.fullName?.takeIf { it.isNotBlank() } ?: user.id, {}, "Username (user ID)", readOnly = true)
+                    CommissionField(draft.title, model::updateTitle, "Title")
                     CommissionField(draft.description, model::updateDescription, "Description", multiline = true)
                     Text("Reference images (optional, up to $MAX_REFERENCES)", style = MaterialTheme.typography.labelLarge, color = Ink)
                     (draft.references.map<Uri, Uri?> { it } +
@@ -247,7 +274,7 @@ private fun CommissionForm(user: User, model: CommissionViewModel, onSubmit: (St
                                     }
                                 } else {
                                     Box(slot) {
-                                        AttachmentPreview(uri, "Reference image", Modifier.fillMaxSize())
+                                        LocalImagePreview(uri, "Reference image", Modifier.fillMaxSize())
                                         TextButton(
                                             onClick = { model.removeReference(uri) },
                                             modifier = Modifier.align(Alignment.TopEnd).size(44.dp),
@@ -259,10 +286,25 @@ private fun CommissionForm(user: User, model: CommissionViewModel, onSubmit: (St
                             repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
-                    MirageButton("Continue to payment", {
+                    MirageButton(
+                        when (submissionState) {
+                            is Resource.Loading -> "Đang gửi…"
+                            else -> "Submit request"
+                        },
+                        model::submit,
+                        Modifier.fillMaxWidth(),
+                        enabled = draft.isBriefValid && submissionState !is Resource.Loading,
+                        secondary = true
+                    )
+                    (submissionState as? Resource.Error)?.let { err ->
+                        Text(err.message, color = MaterialTheme.colorScheme.error)
+                    }
+                    LaunchedEffect(submissionState) {
+                        val success = submissionState as? Resource.Success ?: return@LaunchedEffect
                         editingBrief = false
-                        model.submit()?.let(onSubmit)
-                    }, Modifier.fillMaxWidth(), enabled = draft.isBriefValid, secondary = true)
+                        onSubmit(success.data.commissionId, success.data.activePaymentCode)
+                        model.consumeSubmission()
+                    }
                 }
             }
         }
@@ -314,77 +356,138 @@ private fun SectionTitle(title: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun RequestCard(request: CommissionRequest, detail: String, status: String? = null, onClick: () -> Unit) {
+private fun RequestCard(commission: CommissionSummaryResponse, onClick: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().background(Cream).border(1.dp, Ink)
             .clickable(role = Role.Button, onClick = onClick).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text("Commission request #${request.id}", color = Ink, fontWeight = FontWeight.Bold)
+        Text("#${commission.commissionId} · ${commission.title}", color = Ink, fontWeight = FontWeight.Bold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(detail, Modifier.weight(1f), color = Ink, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-            status?.let { Text(it, color = Ink, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+            Text(formatVnd(commission.totalPrice), Modifier.weight(1f), color = Ink, style = MaterialTheme.typography.bodySmall)
+            Text(commission.status, color = Ink, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
-private fun CommissionTimeline(request: CommissionRequest, onClose: () -> Unit, openPayment: () -> Unit) {
-    Dialog(onDismissRequest = onClose) {
-        WindowFrame("Progress tracking", modifier = Modifier.fillMaxWidth(), onClose = onClose, compact = true) {
-            Text("Request #${request.id} · ${request.status}", color = Ink, fontWeight = FontWeight.Bold)
-            Text(request.draft.description, color = Ink)
-            request.payment?.let { payment ->
-                MirageButton(if (payment.isPaid) "View payment receipt" else "Open SePay payment", openPayment)
-            }
-            Steps.forEachIndexed { index, step ->
-                val completed = index < request.completedSteps || (step == "Payment completed" && request.payment?.isPaid == true)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Canvas(Modifier.size(28.dp)) {
-                        val stroke = 1.dp.toPx()
-                        val centerX = size.width / 2
-                        if (index > 0) drawLine(Ink, Offset(centerX, -16.dp.toPx()), center, stroke)
-                        drawCircle(Ink, radius = 7.dp.toPx())
-                        drawCircle(if (completed) Green else Cream, radius = 6.dp.toPx())
-                    }
-                    Text(
-                        step, Modifier.weight(1f).border(1.dp, Ink, CardShape).padding(7.dp)
-                            .semantics { stateDescription = if (completed) "Complete" else "Pending" },
-                        color = Ink, style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (completed) FontWeight.Bold else FontWeight.Normal
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MockSePayCheckout(
-    payment: MockSePayPayment,
+private fun CommissionTimeline(
+    commission: CommissionResponse,
+    model: CommissionViewModel,
     onClose: () -> Unit,
-    onConfirm: () -> Unit,
-    onOpenChat: () -> Unit
+    onOpenChat: () -> Unit,
+    onOpenPayment: (String) -> Unit
 ) {
-    Dialog(onDismissRequest = onClose) {
-        WindowFrame("SePay · Demo payment", Modifier.fillMaxWidth(), onClose = onClose, compact = true) {
-            SectionTitle(if (payment.isPaid) "Payment received" else "Awaiting bank transfer")
-            Text("Simulation only. No money is transferred.", color = Ink)
-            Column(
-                Modifier.fillMaxWidth().background(GreenLight).border(1.dp, Ink).padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("Amount: ${formatVnd(payment.amountVnd)}", color = Ink, fontWeight = FontWeight.Bold)
-                Text("Bank account: DEMO ONLY", color = Ink)
-                Text("Transfer content: ${payment.transferCode}", color = Ink)
-                payment.transactionId?.let { Text("Transaction: $it", color = Ink) }
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        WindowFrame(
+            "Request #${commission.commissionId}",
+            Modifier.fillMaxWidth().fillMaxHeight(0.85f),
+            onClose = onClose,
+            compact = true
+        ) {
+            Text(commission.title, color = Ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            Text(commission.status, color = Ink, fontWeight = FontWeight.Bold)
+            commission.description?.let { Text(it, color = Ink) }
+
+            Column(Modifier.fillMaxWidth().background(Cream).border(1.dp, Ink).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Gói: ${commission.tierCode}", color = Ink)
+                Text("Giá ban đầu: ${formatVnd(commission.initialPrice)}", color = Ink)
+                if (commission.extraRevisionFee > 0) {
+                    Text("Phí sửa thêm: ${formatVnd(commission.extraRevisionFee)}", color = Ink)
+                }
+                Text("Tổng cộng: ${formatVnd(commission.totalPrice)}", color = Ink, fontWeight = FontWeight.Bold)
+                Text("Đã sửa ${commission.revisionsUsed}/${commission.maxRevisions} lần", color = Ink)
             }
-            if (payment.isPaid) {
+
+            commission.rejectionReason?.let { reason ->
+                Text("Lý do từ chối: $reason", color = MaterialTheme.colorScheme.error)
+            }
+
+            commission.activePaymentCode?.let { code ->
+                MirageButton("Thanh toán ngay · ${formatVnd(commission.totalPrice)}", { onOpenPayment(code) }, Modifier.fillMaxWidth())
+            }
+
+            if (commission.attachments.isNotEmpty()) {
+                Text("Ảnh tham khảo", color = Ink, style = MaterialTheme.typography.labelLarge)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    commission.attachments.take(3).forEach { att ->
+                        RemoteImagePreview(att.imageUrl, att.caption ?: "Reference", Modifier.weight(1f).height(72.dp))
+                    }
+                }
+            }
+
+            if (commission.deliveredPreviews.isNotEmpty()) {
+                Text("Bản xem trước đã giao", color = Ink, style = MaterialTheme.typography.labelLarge)
+                commission.deliveredPreviews.forEach { preview ->
+                    Column(Modifier.fillMaxWidth().background(Cream).border(1.dp, Ink).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        RemoteImagePreview(preview.imageUrl, "Preview v${preview.versionNumber}", Modifier.fillMaxWidth().height(140.dp))
+                        Text("v${preview.versionNumber} · ${preview.status}", color = Ink, fontWeight = FontWeight.Bold)
+                        preview.designerNote?.let { Text(it, color = Ink, style = MaterialTheme.typography.bodySmall) }
+                        if (preview.status == "STAFF_APPROVED") {
+                            MirageButton("Duyệt bản xem trước này", { model.approveDeliverable(commission.commissionId) }, Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+            }
+
+            if (commission.chatActive) {
                 MirageButton("Open commission chat", onOpenChat, Modifier.fillMaxWidth())
-            } else {
-                MirageButton("Simulate successful transfer", onConfirm, Modifier.fillMaxWidth())
-                TextButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                    Text("Pay later", color = Ink)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaymentDialog(paymentCode: String, model: CommissionViewModel, onClose: () -> Unit) {
+    val paymentState by model.payment.collectAsState()
+
+    LaunchedEffect(paymentCode) { model.loadPayment(paymentCode) }
+    // Polls every 3s while PENDING — the server confirms via SePay webhook
+    // independently of this screen; this just picks up the resulting status.
+    LaunchedEffect(paymentState) {
+        val pending = (paymentState as? Resource.Success)?.data?.takeIf { it.status == "PENDING" } ?: return@LaunchedEffect
+        delay(3000)
+        model.loadPayment(paymentCode)
+    }
+
+    Dialog(onDismissRequest = onClose) {
+        WindowFrame("SePay · Thanh toán", Modifier.fillMaxWidth(), onClose = onClose, compact = true) {
+            when (val state = paymentState) {
+                is Resource.Loading, null -> CircularProgressIndicator(color = Ink)
+                is Resource.Error -> {
+                    Text(state.message, color = Ink)
+                    MirageButton("Thử lại", { model.loadPayment(paymentCode) })
+                }
+                is Resource.Success -> {
+                    val session = state.data
+                    SectionTitle(
+                        when (session.status) {
+                            "SUCCEEDED" -> "Đã thanh toán"
+                            "EXPIRED" -> "Đã hết hạn"
+                            "CANCELLED", "FAILED" -> "Thanh toán thất bại"
+                            else -> "Đang chờ chuyển khoản"
+                        }
+                    )
+                    if (session.status == "PENDING") {
+                        session.qrUrl?.let { url -> RemoteImagePreview(url, "Mã QR thanh toán", Modifier.size(220.dp)) }
+                    }
+                    Column(
+                        Modifier.fillMaxWidth().background(GreenLight).border(1.dp, Ink).padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Số tiền: ${formatVnd(session.amount)}", color = Ink, fontWeight = FontWeight.Bold)
+                        Text("Ngân hàng: ${session.bankName}", color = Ink)
+                        Text("Số tài khoản: ${session.accountNumber}", color = Ink)
+                        Text("Chủ tài khoản: ${session.accountName}", color = Ink)
+                        Text("Nội dung chuyển khoản: ${session.paymentCode}", color = Ink)
+                    }
+                    if (session.status == "PENDING") {
+                        // Staging-only shortcut — real customers transfer via the QR
+                        // above; the server's SePay webhook confirms automatically.
+                        MirageButton("Mô phỏng thanh toán thành công (staging)", { model.mockPaySuccess(paymentCode) }, Modifier.fillMaxWidth())
+                    } else {
+                        MirageButton("Đóng", onClose, Modifier.fillMaxWidth())
+                    }
                 }
             }
         }
@@ -392,87 +495,119 @@ private fun MockSePayCheckout(
 }
 
 @Composable
-private fun CommissionConversation(request: CommissionRequest, onClose: () -> Unit, onSend: (CommissionMessage) -> Unit) {
-    var text by rememberSaveable(request.id) { mutableStateOf("") }
-    var attachment by rememberSaveable(request.id) { mutableStateOf<Uri?>(null) }
+private fun CommissionConversation(commissionId: Long, model: CommissionViewModel, onClose: () -> Unit) {
+    var text by rememberSaveable(commissionId) { mutableStateOf("") }
+    var attachment by rememberSaveable(commissionId) { mutableStateOf<Uri?>(null) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) attachment = uri
     }
     val scroll = rememberScrollState()
-    LaunchedEffect(request.messages.size, scroll.maxValue) {
+    val messagesState by model.messages.collectAsState()
+    val messages = (messagesState[commissionId] as? Resource.Success)?.data.orEmpty()
+    val actionResult by model.actionResult.collectAsState()
+
+    DisposableEffect(commissionId) {
+        model.loadMessages(commissionId)
+        model.connectChat(commissionId)
+        onDispose { model.disconnectChat() }
+    }
+    LaunchedEffect(messages.size, scroll.maxValue) {
         if (scroll.maxValue != Int.MAX_VALUE) scroll.scrollTo(scroll.maxValue)
+    }
+    LaunchedEffect(actionResult) {
+        if (actionResult != null) {
+            model.loadMessages(commissionId)
+            model.consumeActionResult()
+        }
     }
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         WindowFrame(
-            "Inbox · Request #${request.id}",
+            "Inbox · Request #$commissionId",
             modifier = Modifier.fillMaxSize().imePadding().padding(8.dp),
             onClose = onClose,
             compact = true,
             scrollState = scroll,
             fillContent = true,
             footer = {
-                if (request.canceled) {
-                    Text("This request has been canceled.", color = Ink)
-                } else {
-                    attachment?.let { uri ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            AttachmentPreview(uri, "Pending attachment", Modifier.size(52.dp))
-                            TextButton(onClick = { attachment = null }) { Text("Remove attachment", color = Ink) }
-                        }
+                attachment?.let { uri ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        LocalImagePreview(uri, "Pending attachment", Modifier.size(52.dp))
+                        TextButton(onClick = { attachment = null }) { Text("Remove attachment", color = Ink) }
                     }
-                    Row(
-                        Modifier.fillMaxWidth().background(Cream, CardShape).border(1.dp, Ink, CardShape),
-                        verticalAlignment = Alignment.CenterVertically
+                }
+                (actionResult as? Resource.Error)?.let { Text(it.message, color = MaterialTheme.colorScheme.error) }
+                Row(
+                    Modifier.fillMaxWidth().background(Cream, CardShape).border(1.dp, Ink, CardShape),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { picker.launch(ImagePickerRequest) }) {
+                        Icon(Icons.Default.AddPhotoAlternate, "Attach image", tint = Ink)
+                    }
+                    OutlinedTextField(
+                        text, { text = it }, Modifier.weight(1f), placeholder = { Text("Message", color = Ink) },
+                        maxLines = 3,
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Ink, unfocusedTextColor = Ink)
+                    )
+                    IconButton(
+                        enabled = text.isNotBlank() || attachment != null,
+                        onClick = {
+                            model.sendMessage(commissionId, text, attachment)
+                            text = ""
+                            attachment = null
+                        }
                     ) {
-                        IconButton(onClick = { picker.launch(ImagePickerRequest) }) {
-                            Icon(Icons.Default.AddPhotoAlternate, "Attach image", tint = Ink)
-                        }
-                        OutlinedTextField(
-                            text, { text = it }, Modifier.weight(1f), placeholder = { Text("Message", color = Ink) },
-                            maxLines = 3,
-                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Ink, unfocusedTextColor = Ink)
-                        )
-                        IconButton(
-                            enabled = text.isNotBlank() || attachment != null,
-                            onClick = {
-                                onSend(CommissionMessage(text.trim(), outgoing = true, attachment = attachment))
-                                text = ""
-                                attachment = null
-                            }
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.Send, "Send message")
-                        }
+                        Icon(Icons.AutoMirrored.Filled.Send, "Send message")
                     }
                 }
             }
         ) {
-            request.messages.forEach { message -> MessageBubble(message) }
+            when (val state = messagesState[commissionId]) {
+                is Resource.Loading -> CircularProgressIndicator(color = Ink)
+                is Resource.Error -> Text(state.message, color = Ink)
+                else -> messages.forEach { message -> MessageBubble(commissionId, message, model) }
+            }
         }
     }
 }
 
 @Composable
-private fun MessageBubble(message: CommissionMessage) {
+private fun MessageBubble(commissionId: Long, message: CommissionMessageResponse, model: CommissionViewModel) {
+    val outgoing = message.senderRole == "CUSTOMER"
     Row(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.outgoing) Arrangement.End else Arrangement.Start,
+        horizontalArrangement = if (outgoing) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Top
     ) {
-        if (!message.outgoing) MessageAvatar(Green, Modifier.padding(end = 8.dp))
+        if (!outgoing) MessageAvatar(Green, Modifier.padding(end = 8.dp))
         Column(
-            Modifier.widthIn(max = 224.dp).background(if (message.outgoing) Green else Cream, CardShape)
+            Modifier.widthIn(max = 224.dp).background(if (outgoing) Green else Cream, CardShape)
                 .border(1.dp, Ink, CardShape).padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            if (message.text.isNotBlank()) Text(message.text, color = Ink)
-            if (message.sampleImage) {
-                Image(painterResource(R.drawable.commission_sample_attachment), "Sample receipt",
-                    Modifier.size(158.dp, 90.dp), contentScale = ContentScale.Crop)
+            when (message.messageType) {
+                "DELIVERABLE_CARD" -> {
+                    Text("Bản xem trước đã sẵn sàng", color = Ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                    message.content?.let { Text(it, color = Ink) }
+                    message.mediaUrl?.let { url -> RemoteImagePreview(url, "Deliverable preview", Modifier.size(158.dp, 90.dp)) }
+                    MirageButton("Duyệt bản xem trước", { model.approveDeliverable(commissionId) }, Modifier.fillMaxWidth())
+                }
+                "EXTRA_FEE_CARD" -> {
+                    Text("Yêu cầu phụ phí sửa đổi", color = Ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                    message.content?.let { Text(it, color = Ink) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        MirageButton("Xác nhận", { model.confirmRevisionCard(commissionId, message.messageId) }, Modifier.weight(1f))
+                        MirageButton("Huỷ", { model.cancelRevisionCard(commissionId) }, Modifier.weight(1f), secondary = true)
+                    }
+                }
+                "SYSTEM" -> Text(message.content.orEmpty(), color = Ink, style = MaterialTheme.typography.bodySmall)
+                else -> {
+                    message.content?.takeIf { it.isNotBlank() }?.let { Text(it, color = Ink) }
+                    message.mediaUrl?.let { url -> RemoteImagePreview(url, "Attached image", Modifier.size(158.dp, 90.dp)) }
+                }
             }
-            message.attachment?.let { AttachmentPreview(it, "Attached image", Modifier.size(158.dp, 90.dp)) }
         }
-        if (message.outgoing) MessageAvatar(Cream, Modifier.padding(start = 8.dp))
+        if (outgoing) MessageAvatar(Cream, Modifier.padding(start = 8.dp))
     }
 }
 
@@ -482,7 +617,7 @@ private fun MessageAvatar(color: Color, modifier: Modifier) {
 }
 
 @Composable
-private fun AttachmentPreview(uri: Uri, label: String, modifier: Modifier) {
+private fun LocalImagePreview(uri: Uri, label: String, modifier: Modifier) {
     val resolver = LocalContext.current.contentResolver
     val bitmap by produceState<ImageBitmap?>(null, uri) {
         value = withContext(Dispatchers.IO) {
@@ -508,5 +643,34 @@ private fun AttachmentPreview(uri: Uri, label: String, modifier: Modifier) {
         }
     } else {
         Image(preview, label, modifier.clip(CardShape), contentScale = ContentScale.Crop)
+    }
+}
+
+private sealed class RemotePreviewState {
+    object Loading : RemotePreviewState()
+    data class Loaded(val bitmap: ImageBitmap) : RemotePreviewState()
+    object Failed : RemotePreviewState()
+}
+
+@Composable
+private fun RemoteImagePreview(url: String, label: String, modifier: Modifier) {
+    val state by produceState<RemotePreviewState>(RemotePreviewState.Loading, url) {
+        value = withContext(Dispatchers.IO) {
+            try {
+                val bitmap = URL(url).openStream().use { BitmapFactory.decodeStream(it) }
+                if (bitmap != null) RemotePreviewState.Loaded(bitmap.asImageBitmap()) else RemotePreviewState.Failed
+            } catch (_: Exception) {
+                RemotePreviewState.Failed
+            }
+        }
+    }
+    when (val s = state) {
+        is RemotePreviewState.Loading -> Box(modifier, contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = Ink, modifier = Modifier.size(20.dp))
+        }
+        is RemotePreviewState.Failed -> Box(modifier, contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.AddPhotoAlternate, "$label (không tải được)", tint = Ink)
+        }
+        is RemotePreviewState.Loaded -> Image(s.bitmap, label, modifier.clip(CardShape), contentScale = ContentScale.Crop)
     }
 }

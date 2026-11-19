@@ -1,4 +1,4 @@
-package com.carled.app.domain.model
+package com.carled.app.domain.model.commission
 
 /**
  * Deterministic, reusable price calculator for the CUSTOM configurator.

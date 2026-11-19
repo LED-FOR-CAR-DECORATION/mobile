@@ -8,8 +8,8 @@ import android.location.LocationManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
-import com.carled.app.domain.model.BleScanBlocker
-import com.carled.app.domain.model.bleScanBlocker
+import com.carled.app.domain.model.ble.BleScanBlocker
+import com.carled.app.domain.model.ble.bleScanBlocker
 
 fun bleScanPermissions(): Array<String> = if (Build.VERSION.SDK_INT >= 31)
     arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)

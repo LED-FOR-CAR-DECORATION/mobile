@@ -5,6 +5,7 @@ import com.carled.app.BuildConfig
 import com.carled.app.data.ble.CarLedBleManager
 import com.carled.app.data.local.UserPreferences
 import com.carled.app.data.remote.ApiService
+import com.carled.app.data.remote.CommissionChatSocket
 import com.carled.app.data.repository.AuthRepositoryImpl
 import com.carled.app.data.repository.BleDeviceRepositoryImpl
 import com.carled.app.data.repository.DeviceClaimRepositoryImpl
@@ -12,11 +13,15 @@ import com.carled.app.data.repository.DeviceRepositoryImpl
 import com.carled.app.data.repository.ProductRepositoryImpl
 import com.carled.app.data.remote.dto.RefreshTokenRequest
 import com.carled.app.data.repository.CommissionPricingRepositoryImpl
+import com.carled.app.data.repository.CommissionRepositoryImpl
+import com.carled.app.data.repository.MediaRepositoryImpl
 import com.carled.app.domain.repository.AuthRepository
 import com.carled.app.domain.repository.BleDeviceRepository
 import com.carled.app.domain.repository.CommissionPricingRepository
+import com.carled.app.domain.repository.CommissionRepository
 import com.carled.app.domain.repository.DeviceClaimRepository
 import com.carled.app.domain.repository.DeviceRepository
+import com.carled.app.domain.repository.MediaRepository
 import com.carled.app.domain.repository.ProductRepository
 import com.carled.app.domain.usecase.auth.GoogleAuthUseCase
 import com.carled.app.domain.usecase.ble.*
@@ -51,7 +56,7 @@ object ServiceLocator {
 
     val gson: Gson = GsonBuilder().create()
 
-    private val plainHttpClient: OkHttpClient by lazy {
+    val plainHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -182,6 +187,20 @@ object ServiceLocator {
     val commissionPricingRepository: CommissionPricingRepository by lazy {
         CommissionPricingRepositoryImpl(apiService)
     }
+    val commissionRepository: CommissionRepository by lazy {
+        CommissionRepositoryImpl(apiService, deviceAuthHeaderProvider, gson)
+    }
+    val commissionChatSocket: CommissionChatSocket by lazy {
+        val wsBase = BuildConfig.BASE_URL
+            .replace("https://", "wss://")
+            .replace("http://", "ws://")
+            .trimEnd('/')
+        CommissionChatSocket(okHttpClient, wsBase, gson)
+    }
+    val mediaRepository: MediaRepository by lazy {
+        MediaRepositoryImpl(requireContext(), apiService, plainHttpClient, deviceAuthHeaderProvider)
+    }
+
 
     val bleUseCases: BleUseCases by lazy {
         BleUseCases(

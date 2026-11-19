@@ -9,7 +9,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.carled.app.domain.model.*
+import com.carled.app.domain.model.commission.CommissionPriceCalculator
+import com.carled.app.domain.model.commission.ModifierType
+import com.carled.app.domain.model.commission.PricingOption
+import com.carled.app.domain.model.commission.PricingRule
+import com.carled.app.domain.model.commission.PricingTier
+import com.carled.app.domain.model.commission.UiType
 import com.carled.app.presentation.components.ChevronGlyph
 import com.carled.app.presentation.components.HardCheckbox
 import com.carled.app.presentation.components.MirageButton
@@ -20,7 +25,7 @@ import com.carled.app.presentation.theme.Ink
 import java.text.NumberFormat
 import java.util.Locale
 
-internal fun formatVndAmount(amount: Long): String =
+private fun formatVndAmount(amount: Long) =
     NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN")).format(amount) + " VND"
 
 /** One tier card: a fixed-price preset, or the CUSTOM tier priced live from [liveCustomTotal]. */

@@ -2,7 +2,7 @@ package com.carled.app.data.repository
 
 import com.carled.app.core.common.Resource
 import com.carled.app.data.remote.ApiService
-import com.carled.app.domain.model.CommissionPricingResponse
+import com.carled.app.domain.model.commission.CommissionPricingResponse
 import com.carled.app.domain.repository.CommissionPricingRepository
 import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException

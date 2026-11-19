@@ -23,7 +23,7 @@ import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.carled.app.core.common.Constants
-import com.carled.app.domain.model.BleDeviceModel
+import com.carled.app.domain.model.ble.BleDeviceModel
 import com.carled.app.domain.model.ConnectionState
 import com.carled.app.domain.model.DeviceTelemetryStatus
 import com.carled.app.domain.model.TelemetryEvent

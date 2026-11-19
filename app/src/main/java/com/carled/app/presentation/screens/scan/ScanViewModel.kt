@@ -2,7 +2,7 @@ package com.carled.app.presentation.screens.scan
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.carled.app.domain.model.BleDeviceModel
+import com.carled.app.domain.model.ble.BleDeviceModel
 import com.carled.app.domain.model.ConnectionState
 import com.carled.app.domain.usecase.ble.BleUseCases
 import com.carled.app.domain.model.TelemetryEvent

@@ -1,4 +1,4 @@
-package com.carled.app.domain.model
+package com.carled.app.domain.model.commission
 
 /**
  * Mirrors the response of GET /api/commissions/pricing (permitAll).
