@@ -44,10 +44,12 @@ import com.carled.app.presentation.theme.Cream
 import com.carled.app.presentation.theme.ErrorRed
 import com.carled.app.presentation.theme.GreenDark
 import com.carled.app.presentation.theme.Ink
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 private val SocialProviders = listOf("Google", "Apple", "Facebook", "Guest")
@@ -62,6 +64,7 @@ fun LoginScreen(
     val uiState by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
+    val signInScope = rememberCoroutineScope()
 
     val submit: () -> Unit = {
         focusManager.clearFocus()
@@ -84,6 +87,7 @@ fun LoginScreen(
         onSocialClick = { provider ->
             if (provider == "Google") {
                 handleGoogleSignIn(
+                    scope = signInScope,
                     context = context,
                     webClientId = context.getString(R.string.default_web_client_id),
                     onTokenReceived = { idToken ->
@@ -305,7 +309,8 @@ private fun VerifyDialogPreview() {
     )
 }
 
-fun handleGoogleSignIn(
+private fun handleGoogleSignIn(
+    scope: CoroutineScope,
     context: android.content.Context,
     webClientId: String,
     onTokenReceived: (String) -> Unit,
@@ -313,17 +318,13 @@ fun handleGoogleSignIn(
 ) {
     val credentialManager = CredentialManager.create(context)
 
-    val googleIdOption = GetGoogleIdOption.Builder()
-        .setFilterByAuthorizedAccounts(false)
-        .setServerClientId(webClientId)
-        .setAutoSelectEnabled(true)
-        .build()
+    val googleIdOption = GetSignInWithGoogleOption.Builder(webClientId).build()
 
     val request = GetCredentialRequest.Builder()
         .addCredentialOption(googleIdOption)
         .build()
 
-    CoroutineScope(Dispatchers.Main).launch {
+    scope.launch {
         try {
             val result: GetCredentialResponse = credentialManager.getCredential(
                 context = context,
@@ -340,6 +341,10 @@ fun handleGoogleSignIn(
             } else {
                 onError("Unexpected credential type received.")
             }
+        } catch (_: GetCredentialCancellationException) {
+            return@launch
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             onError(e.localizedMessage ?: "Google Sign-In failed")
         }
