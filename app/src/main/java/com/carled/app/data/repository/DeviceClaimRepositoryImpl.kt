@@ -4,8 +4,8 @@ import android.util.Log
 import com.carled.app.core.common.Resource
 import com.carled.app.data.remote.ApiService
 import com.carled.app.data.remote.dto.ClaimDeviceRequest
-import com.carled.app.domain.model.ClaimedDevice
-import com.carled.app.domain.model.DeviceClaimPayload
+import com.carled.app.domain.model.device.ClaimedDevice
+import com.carled.app.domain.model.device.DeviceClaimPayload
 import com.carled.app.domain.repository.DeviceClaimRepository
 import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException

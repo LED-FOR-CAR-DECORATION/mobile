@@ -11,7 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.presentation.components.*
 
 @Composable

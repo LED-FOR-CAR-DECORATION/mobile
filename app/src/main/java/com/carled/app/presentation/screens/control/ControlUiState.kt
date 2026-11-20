@@ -1,6 +1,6 @@
 package com.carled.app.presentation.screens.control
 
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.model.DeviceTelemetryStatus
 import com.carled.app.domain.model.LedControlState
 import com.carled.app.domain.model.TelemetryEvent

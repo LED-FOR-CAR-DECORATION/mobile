@@ -22,7 +22,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.carled.app.data.ble.bleScanPermissions
 import com.carled.app.data.ble.readBleScanBlocker
 import com.carled.app.domain.model.ble.BleScanBlocker
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.presentation.components.*
 
 @Composable

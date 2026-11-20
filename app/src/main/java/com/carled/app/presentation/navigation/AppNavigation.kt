@@ -18,7 +18,7 @@ import androidx.navigation.compose.*
 import com.carled.app.core.di.ServiceLocator
 import com.carled.app.data.local.MockCharacterInventory
 import com.carled.app.data.local.TextProfileStore
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.model.User
 import com.carled.app.presentation.screens.auth.*
 import com.carled.app.presentation.screens.canvas.*

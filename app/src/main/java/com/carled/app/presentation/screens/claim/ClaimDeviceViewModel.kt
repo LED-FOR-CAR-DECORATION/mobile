@@ -4,11 +4,11 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.carled.app.core.common.Resource
-import com.carled.app.domain.model.ClaimedDevice
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.device.ClaimedDevice
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.model.OwnedDevice
-import com.carled.app.domain.model.QrDecodeResult
-import com.carled.app.domain.model.parseDeviceClaimPayload
+import com.carled.app.domain.model.device.QrDecodeResult
+import com.carled.app.domain.model.device.parseDeviceClaimPayload
 import com.carled.app.domain.repository.DeviceClaimRepository
 import com.carled.app.domain.repository.DeviceRepository
 import com.carled.app.domain.usecase.ble.BleUseCases

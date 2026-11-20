@@ -3,6 +3,7 @@ package com.carled.app.presentation.screens.control
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.carled.app.domain.model.*
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.usecase.ble.BleUseCases
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel

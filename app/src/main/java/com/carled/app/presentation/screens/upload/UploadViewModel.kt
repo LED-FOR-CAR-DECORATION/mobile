@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.carled.app.domain.model.*
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.usecase.ble.BleUseCases
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*

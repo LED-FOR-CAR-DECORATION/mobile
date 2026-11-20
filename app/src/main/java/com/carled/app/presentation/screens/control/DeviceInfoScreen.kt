@@ -9,9 +9,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.carled.app.domain.model.ConnectionState
-import com.carled.app.domain.model.MockDeviceInventory
-import com.carled.app.domain.model.isValidDeviceName
+import com.carled.app.domain.model.ble.ConnectionState
+import com.carled.app.domain.model.device.MockDeviceInventory
+import com.carled.app.domain.model.device.isValidDeviceName
 import com.carled.app.presentation.components.*
 import com.carled.app.presentation.theme.*
 import kotlinx.coroutines.CancellationException

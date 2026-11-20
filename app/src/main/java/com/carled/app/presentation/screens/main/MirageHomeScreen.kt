@@ -41,9 +41,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.carled.app.R
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.model.User
-import com.carled.app.domain.model.isValidDeviceName
+import com.carled.app.domain.model.device.isValidDeviceName
 import com.carled.app.presentation.components.ChevronGlyph
 import com.carled.app.presentation.components.DeviceSection
 import com.carled.app.presentation.components.EmptyRow

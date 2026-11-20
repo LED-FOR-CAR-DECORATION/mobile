@@ -6,7 +6,7 @@ import com.carled.app.data.ble.CarLedBleManager
 import com.carled.app.data.ble.ConfirmedCanvasSender
 import com.carled.app.data.ble.TouchPoint
 import com.carled.app.domain.model.ble.BleDeviceModel
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.model.DeviceTelemetryStatus
 import com.carled.app.domain.model.LedControlState
 import com.carled.app.domain.model.LedMode

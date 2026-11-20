@@ -7,6 +7,7 @@ import com.carled.app.domain.model.MarqueeLayout
 import com.carled.app.domain.model.TextProfile
 import com.carled.app.domain.model.TextProfilePlan
 import com.carled.app.domain.model.TextProfileRepository
+import com.carled.app.domain.model.ble.ConnectionState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -140,7 +141,7 @@ class MarqueeViewModel(private val bleUseCases: BleUseCases, private val profile
             return
         }
         if (state.isSending) return
-        if (bleUseCases.getConnectionState().value !is com.carled.app.domain.model.ConnectionState.Connected) {
+        if (bleUseCases.getConnectionState().value !is ConnectionState.Connected) {
             _uiState.update { it.copy(feedbackMessage = "Kết nối LED trước khi gửi.") }; return
         }
         if (!state.text.all { it.code in 32..126 }) {

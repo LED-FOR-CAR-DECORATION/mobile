@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.carled.app.core.di.ServiceLocator
 import com.carled.app.domain.model.*
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.repository.BleDeviceRepository
 import com.carled.app.domain.usecase.ble.*
 import com.carled.app.presentation.screens.marquee.*

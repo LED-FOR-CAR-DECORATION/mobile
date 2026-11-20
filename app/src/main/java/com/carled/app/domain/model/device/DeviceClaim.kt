@@ -1,5 +1,6 @@
-package com.carled.app.domain.model
+package com.carled.app.domain.model.device
 
+import android.util.Log
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -49,8 +50,8 @@ fun parseDeviceClaimPayload(raw: String): QrDecodeResult {
             put("sig", sig)
         }.toString()
 
-        android.util.Log.d("DeviceClaimParser", "Parsed QR successfully -> SN: $sn | MAC: $mac | SIG: $sig")
-        android.util.Log.d("DeviceClaimParser", "Serialized compact qrPayload string: $compactQr")
+        Log.d("DeviceClaimParser", "Parsed QR successfully -> SN: $sn | MAC: $mac | SIG: $sig")
+        Log.d("DeviceClaimParser", "Serialized compact qrPayload string: $compactQr")
 
         QrDecodeResult.Success(
             DeviceClaimPayload(

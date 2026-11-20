@@ -8,7 +8,7 @@ import com.carled.app.data.ble.TouchPoint
 import com.carled.app.data.local.PixelDraft
 import com.carled.app.data.local.PixelDraftStore
 import com.carled.app.data.local.PixelPalette
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.model.MirrorMode
 import com.carled.app.domain.model.PixelDocument
 import com.carled.app.domain.model.PixelFont
