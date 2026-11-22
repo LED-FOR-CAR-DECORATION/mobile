@@ -18,6 +18,7 @@ import com.carled.app.data.remote.dto.ResendVerificationRequest
 import com.carled.app.data.remote.dto.ResetPasswordRequest
 import com.carled.app.data.remote.dto.UserProfileResponse
 import com.carled.app.data.remote.dto.VerifyEmailRequest
+import com.carled.app.domain.model.CreateSignedUploadUrlRequest
 import com.carled.app.domain.model.commission.ApproveDeliverableCardResponse
 import com.carled.app.domain.model.commission.CommissionPricingResponse
 import com.carled.app.domain.model.commission.CommissionResponse
@@ -27,9 +28,9 @@ import com.carled.app.domain.model.commission.CommissionSummaryResponse
 import com.carled.app.domain.model.commission.ConfirmRevisionCardRequest
 import com.carled.app.domain.model.commission.ConfirmRevisionCardResponse
 import com.carled.app.domain.model.commission.CreateCommissionMessageRequest
-import com.carled.app.domain.model.MediaUploadUrlRequest
-import com.carled.app.domain.model.MediaUploadUrlResponse
+
 import com.carled.app.domain.model.PaymentSessionResponse
+import com.carled.app.domain.model.SignedUploadUrlResponse
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -167,9 +168,8 @@ interface ApiService {
     @POST("api/media/upload-url")
     suspend fun getMediaUploadUrl(
         @Header("Authorization") authorization: String,
-        @Body request: MediaUploadUrlRequest
-    ): Response<ApiResponse<MediaUploadUrlResponse>>
-
+        @Body request: CreateSignedUploadUrlRequest
+    ): Response<ApiResponse<SignedUploadUrlResponse>>
     @GET("api/payments/{paymentCode}")
     suspend fun getPaymentSession(
         @Header("Authorization") authorization: String,

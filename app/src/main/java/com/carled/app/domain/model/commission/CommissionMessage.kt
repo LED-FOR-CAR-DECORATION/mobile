@@ -3,9 +3,9 @@ package com.carled.app.domain.model.commission
 data class CommissionMessageResponse(
     val messageId: Long,
     val commissionId: Long,
-    val senderId: Long,
+    val senderId: Long? = null, // null for SYSTEM messages — confirmed by spec
     val senderRole: String,
-    val messageType: String, // TEXT, IMAGE, DELIVERABLE_CARD, EXTRA_FEE_CARD, SYSTEM
+    val messageType: String,
     val content: String? = null,
     val mediaUrl: String? = null,
     val metadataJson: String? = null,

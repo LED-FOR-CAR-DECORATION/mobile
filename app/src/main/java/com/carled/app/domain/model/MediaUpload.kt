@@ -1,16 +1,17 @@
 package com.carled.app.domain.model
 
-data class MediaUploadUrlRequest(
+data class CreateSignedUploadUrlRequest(
     val fileName: String,
     val contentType: String,
     val fileSize: Long,
-    val purpose: String,       // e.g. COMMISSION_REFERENCE, COMMISSION_CHAT, CHARACTER_ASSET
-    val targetId: Long? = null // ASSUMPTION: nullable — see note on pre-creation uploads
+    val purpose: String,
+    val targetId: Long? = null
 )
 
-data class MediaUploadUrlResponse(
+data class SignedUploadUrlResponse(
     val signedUploadUrl: String,
-    val publicUrl: String,
+    val publicUrl: String? = null,
     val objectKey: String,
+    val uploadHeaders: Map<String, String> = emptyMap(),
     val expiresAt: String
 )

@@ -4,7 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.carled.app.core.common.Resource
 import com.carled.app.data.remote.ApiService
-import com.carled.app.domain.model.MediaUploadUrlRequest
+import com.carled.app.domain.model.CreateSignedUploadUrlRequest
 import com.carled.app.domain.repository.MediaRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,17 +16,18 @@ import java.io.File
 import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
 
-private const val MAX_UPLOAD_BYTES = 10 * 1024 * 1024L // AC02 — 10MB, matches x-goog-content-length-range: 0,10485760
-private val ALLOWED_CONTENT_TYPES = setOf(
-    "image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"
-)
+private const val MAX_UPLOAD_BYTES = 10 * 1024 * 1024L
+// Matches the server's deployed regex exactly (^(image/jpeg|image/png|image/webp|image/gif)$) —
+// note this excludes image/svg+xml despite an earlier AC02 text description
+// listing SVG as allowed; the actual enforced validation pattern does not.
+private val ALLOWED_CONTENT_TYPES = setOf("image/jpeg", "image/png", "image/webp", "image/gif")
+
+/** Purposes whose objectKey (not publicUrl) must be sent to downstream endpoints — see SignedUploadUrlResponse.publicUrl's doc. */
+private val PRIVATE_PURPOSES = setOf("COMMISSION_REFERENCE", "COMMISSION_CHAT", "COMMISSION_DRAFT", "WARRANTY_EVIDENCE")
 
 class MediaRepositoryImpl(
     private val context: Context,
     private val api: ApiService,
-    /** No-authenticator client — the signed-URL PUT must not carry our Bearer
-     *  token or risk the 401-retry authenticator touching this request;
-     *  GCS V4 signatures are tied to the exact request they were signed for. */
     private val uploadHttpClient: OkHttpClient,
     private val authHeaderProvider: suspend () -> String?
 ) : MediaRepository {
@@ -38,7 +39,7 @@ class MediaRepositoryImpl(
         return try {
             val contentType = context.contentResolver.getType(uri) ?: "application/octet-stream"
             if (contentType !in ALLOWED_CONTENT_TYPES) {
-                return Resource.Error("Định dạng ảnh không được hỗ trợ ($contentType). Chỉ chấp nhận JPEG, PNG, WEBP, GIF hoặc SVG.")
+                return Resource.Error("Định dạng ảnh không được hỗ trợ ($contentType). Chỉ chấp nhận JPEG, PNG, WEBP hoặc GIF.")
             }
 
             tempFile = withContext(Dispatchers.IO) { copyToCache(uri) }
@@ -51,7 +52,7 @@ class MediaRepositoryImpl(
 
             val fileName = queryDisplayName(uri) ?: tempFile.name
 
-            val urlRequest = MediaUploadUrlRequest(
+            val urlRequest = CreateSignedUploadUrlRequest(
                 fileName = fileName,
                 contentType = contentType,
                 fileSize = fileSize,
@@ -66,26 +67,25 @@ class MediaRepositoryImpl(
             val upload = urlResponse.body()?.data
                 ?: return Resource.Error("Phản hồi từ máy chủ trống")
 
-            // These three headers are part of what the V4 signature itself covers
-            // (AC04) — the actual PUT must echo them exactly, or GCS rejects the
-            // request as a signature mismatch. Not yet verified against a live
-            // deployment — this endpoint isn't deployed as of this writing.
-            val putRequest = Request.Builder()
+            val putRequestBuilder = Request.Builder()
                 .url(upload.signedUploadUrl)
                 .put(tempFile.asRequestBody(contentType.toMediaTypeOrNull()))
-                .header("Content-Type", contentType)
-                .header("x-goog-content-length-range", "0,10485760")
-                .header("Cache-Control", "public, max-age=31536000, immutable")
-                .build()
+            // Echo back exactly what the server specified — these headers are
+            // part of what the V4 signature itself covers.
+            upload.uploadHeaders.forEach { (key, value) -> putRequestBuilder.header(key, value) }
 
-            val putResult = withContext(Dispatchers.IO) { uploadHttpClient.newCall(putRequest).execute() }
+            val putResult = withContext(Dispatchers.IO) { uploadHttpClient.newCall(putRequestBuilder.build()).execute() }
             putResult.use {
                 if (!it.isSuccessful) {
                     return Resource.Error("Tải ảnh lên bộ nhớ thất bại (lỗi ${it.code}).")
                 }
             }
 
-            Resource.Success(upload.publicUrl)
+            // Private purposes (COMMISSION_REFERENCE, COMMISSION_CHAT, ...) have
+            // publicUrl = null by design — downstream endpoints want objectKey
+            // instead, per CommissionAttachmentItemRequest's own field doc.
+            val result = if (purpose in PRIVATE_PURPOSES) upload.objectKey else (upload.publicUrl ?: upload.objectKey)
+            Resource.Success(result)
         } catch (e: IOException) {
             Resource.Error("Không kết nối được tới máy chủ. Kiểm tra mạng và thử lại.")
         } catch (e: CancellationException) {

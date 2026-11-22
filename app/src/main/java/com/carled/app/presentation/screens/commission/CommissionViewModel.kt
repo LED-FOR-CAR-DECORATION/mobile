@@ -286,6 +286,7 @@ internal class CommissionViewModel(
             when (val result = repository.approveDeliverable(id)) {
                 is Resource.Success -> {
                     _actionResult.value = Resource.Success(Unit)
+                    appendMessage(id, result.data.systemMessage)
                     loadDetail(id)
                     loadCommissions()
                 }

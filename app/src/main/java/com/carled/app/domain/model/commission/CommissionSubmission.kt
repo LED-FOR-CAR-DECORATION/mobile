@@ -64,6 +64,7 @@ data class CommissionResponse(
     val autoCompleteAt: String? = null,
     val createdAt: String? = null,
     val updatedAt: String? = null,
+    val estimatedDeliveryAt: String? = null,
     val attachments: List<CommissionAttachment> = emptyList(),
     val deliveredPreviews: List<DeliveredPreview> = emptyList()
 )
