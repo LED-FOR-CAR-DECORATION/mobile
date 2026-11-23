@@ -1,4 +1,4 @@
-package com.carled.app.domain.model
+package com.carled.app.domain.model.ble
 
 enum class BleScanBlocker(val message: String) {
     PERMISSION("Ứng dụng chưa có quyền quét Bluetooth."),

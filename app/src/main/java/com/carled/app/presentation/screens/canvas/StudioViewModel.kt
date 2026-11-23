@@ -8,7 +8,7 @@ import com.carled.app.data.ble.TouchPoint
 import com.carled.app.data.local.PixelDraft
 import com.carled.app.data.local.PixelDraftStore
 import com.carled.app.data.local.PixelPalette
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.model.MirrorMode
 import com.carled.app.domain.model.PixelDocument
 import com.carled.app.domain.model.PixelFont
@@ -18,6 +18,7 @@ import com.carled.app.domain.model.PixelTool
 import com.carled.app.domain.model.TelemetryEvent
 import com.carled.app.domain.model.clearRegion
 import com.carled.app.domain.model.regionPixels
+import com.carled.app.domain.model.scrollFrames
 import com.carled.app.domain.model.stampRegion
 import com.carled.app.domain.usecase.ble.BleUseCases
 import kotlinx.coroutines.CancellationException
@@ -80,7 +81,6 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
     private val id = draftId ?: UUID.randomUUID().toString()
     private val writes = Mutex()
     private val changed = Channel<Unit>(Channel.CONFLATED)
-    private var resumeAfterSave = false
     private var wire: IntArray? = null
     private var generation = 0
     private val undo = ArrayDeque<PixelDocument>()
@@ -135,7 +135,6 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
                                 delay(40)
                                 if (epoch != generation) return@withLock false
                                 wire = IntArray(totalPixels)
-                                resumeAfterSave = false
                             }
                             val current = requireNotNull(wire)
                             val target = livePixels(document)
@@ -618,12 +617,20 @@ class StudioViewModel(private val ble: BleUseCases, context: Context, draftId: S
                                     .first { it is TelemetryEvent.UploadComplete || it is TelemetryEvent.UploadError }
                             }
                         }
-                        ble.uploadProjection(d.rgb565())
+
+                        val frames = d.scrollFrames()
+                        val combined = frames.map { it.rgb565() }.reduce { acc, f -> acc + f }
+                        ble.uploadProjection(
+                            rgb565Data = combined,
+                            width = d.width,
+                            height = d.height,
+                            frameCount = frames.size,
+                            frameDelayMs = if (frames.size > 1) 80 else 200
+                        )
                         when (val event = ack.await()) {
                             is TelemetryEvent.UploadComplete -> {
                                 if (epoch != generation) error("Kết nối đã thay đổi trong khi lưu. Hãy kiểm tra và lưu lại.")
                                 wire = livePixels(d)
-                                resumeAfterSave = true
                                 feedback("LED đã xác nhận lưu vào bộ nhớ thiết bị (SPIFFS).")
                             }
 

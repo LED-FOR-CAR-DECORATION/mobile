@@ -1,4 +1,4 @@
-package com.carled.app.domain.model
+package com.carled.app.domain.model.ble
 
 /**
  * Domain entity đại diện cho thiết bị LED được quét thấy qua BLE.

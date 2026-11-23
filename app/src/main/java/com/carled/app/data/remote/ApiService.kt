@@ -18,6 +18,19 @@ import com.carled.app.data.remote.dto.ResendVerificationRequest
 import com.carled.app.data.remote.dto.ResetPasswordRequest
 import com.carled.app.data.remote.dto.UserProfileResponse
 import com.carled.app.data.remote.dto.VerifyEmailRequest
+import com.carled.app.domain.model.CreateSignedUploadUrlRequest
+import com.carled.app.domain.model.commission.ApproveDeliverableCardResponse
+import com.carled.app.domain.model.commission.CommissionPricingResponse
+import com.carled.app.domain.model.commission.CommissionResponse
+import com.carled.app.domain.model.commission.CreateCommissionRequest
+import com.carled.app.domain.model.commission.CommissionMessageResponse
+import com.carled.app.domain.model.commission.CommissionSummaryResponse
+import com.carled.app.domain.model.commission.ConfirmRevisionCardRequest
+import com.carled.app.domain.model.commission.ConfirmRevisionCardResponse
+import com.carled.app.domain.model.commission.CreateCommissionMessageRequest
+
+import com.carled.app.domain.model.PaymentSessionResponse
+import com.carled.app.domain.model.SignedUploadUrlResponse
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -25,6 +38,7 @@ import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
+
 
 interface ApiService {
 
@@ -57,7 +71,10 @@ interface ApiService {
     suspend fun googleAuth(@Body request: GoogleAuthRequest): Response<LoginResponse>
 
     @POST("api/auth/logout")
-    suspend fun logout(): Response<Unit>
+    suspend fun logout(
+        @Header("Authorization") authorization: String,
+        @Body request: LogoutRequest
+    ): Response<Unit>
 
     // -------------------------------------------------------------------------
     // Users
@@ -88,11 +105,6 @@ interface ApiService {
         @Body request: ClaimDeviceRequest
     ): Response<ClaimDeviceResponse>
 
-    /**
-     * GET /api/devices
-     * Retrieves the paginated list of bound devices.
-     * Default page is set to 0 to satisfy server validation: page >= 0.
-     */
     @GET("api/devices")
     suspend fun getDevices(
         @Header("Authorization") authorization: String,
@@ -100,20 +112,93 @@ interface ApiService {
         @Query("size") size: Int = 20
     ): Response<ApiResponse<List<DeviceDto>>>
 
-    /**
-     * GET /api/devices/{id}
-     * Retrieves detailed information for a specific device by its numeric ID (> 0).
-     */
     @GET("api/devices/{id}")
     suspend fun getDeviceById(
         @Header("Authorization") authorization: String,
         @Path("id") id: Long
     ): Response<ApiResponse<DeviceDetailDto>>
 
-    @POST("api/auth/logout")
-    suspend fun logout(
+    // -------------------------------------------------------------------------
+    // Commissions
+    // -------------------------------------------------------------------------
+
+    @GET("api/commissions/pricing")
+    suspend fun getCommissionPricing(): Response<ApiResponse<CommissionPricingResponse>>
+
+    @POST("api/commissions")
+    suspend fun createCommission(
         @Header("Authorization") authorization: String,
-        @Body request: LogoutRequest
+        @Body request: CreateCommissionRequest
+    ): Response<ApiResponse<CommissionResponse>>
+
+    @GET("api/commissions/my")
+    suspend fun getMyCommissions(
+        @Header("Authorization") authorization: String,
+        @Query("status") status: String? = null,
+        @Query("sortDirection") sortDirection: String = "DESC",
+        @Query("page") page: Int = 0,
+        @Query("size") size: Int = 20
+    ): Response<ApiResponse<List<CommissionSummaryResponse>>>
+
+    @GET("api/commissions/{id}")
+    suspend fun getCommissionDetail(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long
+    ): Response<ApiResponse<CommissionResponse>>
+
+    @GET("api/commissions/{id}/messages")
+    suspend fun getCommissionMessages(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long
+    ): Response<ApiResponse<List<CommissionMessageResponse>>>
+
+    @POST("api/commissions/{id}/messages")
+    suspend fun sendCommissionMessage(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long,
+        @Body request: CreateCommissionMessageRequest
+    ): Response<ApiResponse<CommissionMessageResponse>>
+
+    // -------------------------------------------------------------------------
+    // Media (MED-01) — ASSUMPTION: path/shape not given in any spec seen so
+    // far. Follows this backend's multipart conventions; confirm against the
+    // real MED-01 spec once available.
+    // -------------------------------------------------------------------------
+
+    @POST("api/media/upload-url")
+    suspend fun getMediaUploadUrl(
+        @Header("Authorization") authorization: String,
+        @Body request: CreateSignedUploadUrlRequest
+    ): Response<ApiResponse<SignedUploadUrlResponse>>
+    @GET("api/payments/{paymentCode}")
+    suspend fun getPaymentSession(
+        @Header("Authorization") authorization: String,
+        @Path("paymentCode") paymentCode: String
+    ): Response<ApiResponse<PaymentSessionResponse>>
+
+    /** Staging-only test trigger — simulates a successful transfer without a real bank. */
+    @POST("api/payments/mock-success/{paymentCode}")
+    suspend fun mockPaymentSuccess(
+        @Header("Authorization") authorization: String,
+        @Path("paymentCode") paymentCode: String
+    ): Response<ApiResponse<PaymentSessionResponse>>
+
+    @POST("api/commissions/{id}/deliverable-card/approve")
+    suspend fun approveDeliverableCard(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long
+    ): Response<ApproveDeliverableCardResponse> // confirmed unwrapped, same as POST /api/commissions
+
+    @POST("api/commissions/{id}/revision-card/confirm")
+    suspend fun confirmRevisionCard(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long,
+        @Body request: ConfirmRevisionCardRequest
+    ): Response<ApiResponse<ConfirmRevisionCardResponse>>
+
+    @POST("api/commissions/{id}/revision-card/cancel")
+    suspend fun cancelRevisionCard(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long
     ): Response<Unit>
 }
-

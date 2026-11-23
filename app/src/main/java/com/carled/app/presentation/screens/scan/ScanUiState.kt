@@ -1,7 +1,7 @@
 package com.carled.app.presentation.screens.scan
 
-import com.carled.app.domain.model.BleDeviceModel
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.ble.BleDeviceModel
+import com.carled.app.domain.model.ble.ConnectionState
 
 data class ScanUiState(
     val isScanning: Boolean = false,

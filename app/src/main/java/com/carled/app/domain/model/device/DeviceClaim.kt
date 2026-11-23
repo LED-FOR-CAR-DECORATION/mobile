@@ -1,5 +1,6 @@
-package com.carled.app.domain.model
+package com.carled.app.domain.model.device
 
+import android.util.Log
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -7,7 +8,8 @@ data class DeviceClaimPayload(
     val version: Int,
     val serialNumber: String,
     val macAddress: String,
-    val signature: String
+    val signature: String,
+    val qrPayload: String
 )
 
 data class ClaimedDevice(
@@ -19,16 +21,18 @@ data class ClaimedDevice(
 
 sealed class QrDecodeResult {
     data class Success(val payload: DeviceClaimPayload) : QrDecodeResult()
-
     object NotADevicePayload : QrDecodeResult()
-
     data class Malformed(val reason: String) : QrDecodeResult()
 }
 
 fun parseDeviceClaimPayload(raw: String): QrDecodeResult {
     return try {
         val root = JSONObject(raw)
-        val obj = if (root.has("qrPayload")) root.getJSONObject("qrPayload") else root
+        val obj = when (val wrapped = root.opt("qrPayload")) {
+            is JSONObject -> wrapped
+            is String -> JSONObject(wrapped)
+            else -> root
+        }
         if (!obj.has("sn") || !obj.has("mac") || !obj.has("sig")) return QrDecodeResult.NotADevicePayload
 
         val sn = obj.getString("sn").trim()
@@ -38,12 +42,24 @@ fun parseDeviceClaimPayload(raw: String): QrDecodeResult {
             return QrDecodeResult.Malformed("Mã QR thiếu thông tin (sn/mac/sig).")
         }
 
+        val version = obj.optInt("v", 1)
+        val compactQr = JSONObject().apply {
+            put("v", version)
+            put("sn", sn)
+            put("mac", mac)
+            put("sig", sig)
+        }.toString()
+
+        Log.d("DeviceClaimParser", "Parsed QR successfully -> SN: $sn | MAC: $mac | SIG: $sig")
+        Log.d("DeviceClaimParser", "Serialized compact qrPayload string: $compactQr")
+
         QrDecodeResult.Success(
             DeviceClaimPayload(
-                version = obj.optInt("v", 1),
+                version = version,
                 serialNumber = sn,
                 macAddress = mac,
-                signature = sig
+                signature = sig,
+                qrPayload = compactQr
             )
         )
     } catch (e: JSONException) {

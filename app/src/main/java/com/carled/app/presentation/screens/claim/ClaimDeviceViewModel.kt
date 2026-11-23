@@ -1,13 +1,16 @@
 package com.carled.app.presentation.screens.claim
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.carled.app.core.common.Resource
-import com.carled.app.domain.model.ClaimedDevice
-import com.carled.app.domain.model.ConnectionState
-import com.carled.app.domain.model.QrDecodeResult
-import com.carled.app.domain.model.parseDeviceClaimPayload
+import com.carled.app.domain.model.device.ClaimedDevice
+import com.carled.app.domain.model.ble.ConnectionState
+import com.carled.app.domain.model.OwnedDevice
+import com.carled.app.domain.model.device.QrDecodeResult
+import com.carled.app.domain.model.device.parseDeviceClaimPayload
 import com.carled.app.domain.repository.DeviceClaimRepository
+import com.carled.app.domain.repository.DeviceRepository
 import com.carled.app.domain.usecase.ble.BleUseCases
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,21 +21,15 @@ import kotlinx.coroutines.launch
 sealed class ClaimDeviceUiState {
     object Scanning : ClaimDeviceUiState()
     object Claiming : ClaimDeviceUiState()
-
-
     data class Connecting(val device: ClaimedDevice) : ClaimDeviceUiState()
-
-
     data class Claimed(val device: ClaimedDevice) : ClaimDeviceUiState()
-
-
     data class Connected(val device: ClaimedDevice) : ClaimDeviceUiState()
-
     data class Error(val message: String) : ClaimDeviceUiState()
 }
 
 class ClaimDeviceViewModel(
     private val repository: DeviceClaimRepository,
+    private val deviceRepository: DeviceRepository,
     private val bleUseCases: BleUseCases
 ) : ViewModel() {
 
@@ -41,22 +38,39 @@ class ClaimDeviceViewModel(
 
     private val _autoConnect = MutableStateFlow(true)
     val autoConnect: StateFlow<Boolean> = _autoConnect.asStateFlow()
+
+    private var hasHandledCode = false
+    private var connectJob: Job? = null
+
     fun setAutoConnect(enabled: Boolean) {
         _autoConnect.value = enabled
     }
-    private var hasHandledCode = false
-    private var connectJob: Job? = null
 
     fun onQrCodeDetected(raw: String) {
         if (hasHandledCode) return
         when (val result = parseDeviceClaimPayload(raw)) {
             is QrDecodeResult.Success -> {
                 hasHandledCode = true
+                Log.i("ClaimDeviceVM", "QR Code scanned successfully: ${result.payload}")
                 _uiState.value = ClaimDeviceUiState.Claiming
                 viewModelScope.launch {
                     when (val res = repository.claimDevice(result.payload)) {
                         is Resource.Success -> {
                             val device = res.data
+                            // Ghi ngay vào cache trước khi tự động kết nối BLE, vì
+                            // isMacOwned() (BleDeviceRepositoryImpl) chỉ đọc cache —
+                            // nếu không có bước này, thiết bị vừa claim sẽ bị từ chối
+                            // kết nối cho tới khi OwnedDevicesViewModel.refresh() chạy xong.
+                            deviceRepository.cacheOwnedDevice(
+                                OwnedDevice(
+                                    id = device.id,
+                                    deviceName = device.deviceName,
+                                    macAddress = device.macAddress,
+                                    serialNumber = device.serialNumber,
+                                    firmwareVersion = null,
+                                    lastUpdated = null
+                                )
+                            )
                             if (_autoConnect.value) connectOverBle(device) else _uiState.value = ClaimDeviceUiState.Claimed(device)
                         }
                         is Resource.Error -> {
@@ -73,6 +87,7 @@ class ClaimDeviceViewModel(
     }
 
     private fun connectOverBle(device: ClaimedDevice) {
+        connectJob?.cancel()
         _uiState.value = ClaimDeviceUiState.Connecting(device)
         bleUseCases.connectDevice(device.macAddress)
         connectJob = viewModelScope.launch {

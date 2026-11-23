@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val stagingApiUrl = "http://10.0.2.2:8080/"
+val releaseApiUrl = providers.gradleProperty("releaseApiUrl").getOrElse(stagingApiUrl).trimEnd('/') + "/"
+
 android {
     namespace = "com.carled.app"
     compileSdk = 37
@@ -23,7 +26,7 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "BASE_URL", "\"https://lumintra-backend-staging.bluedesert-a7b94014.eastasia.azurecontainerapps.io/\"")
+            buildConfigField("String", "BASE_URL", "\"$stagingApiUrl\"")
         }
         release {
             isMinifyEnabled = false
@@ -31,7 +34,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("String", "BASE_URL", "\"https://api.yourproduction.com/\"")
+            buildConfigField("String", "BASE_URL", "\"$releaseApiUrl\"")
         }
     }
 
@@ -86,4 +89,5 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 }

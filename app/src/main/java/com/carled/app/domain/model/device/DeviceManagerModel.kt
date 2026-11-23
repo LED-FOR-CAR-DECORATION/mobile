@@ -1,4 +1,4 @@
-package com.carled.app.domain.model
+package com.carled.app.domain.model.device
 
 data class OwnedDevicePanel(
     val id: String,

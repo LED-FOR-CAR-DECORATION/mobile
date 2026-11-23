@@ -2,7 +2,6 @@ package com.carled.app.presentation.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.HelpOutline
@@ -16,8 +15,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.carled.app.domain.model.FirmwareRelease
-import com.carled.app.domain.model.FirmwareTag
+import com.carled.app.domain.model.device.FirmwareRelease
+import com.carled.app.domain.model.device.FirmwareTag
 import com.carled.app.presentation.theme.Cream
 import com.carled.app.presentation.theme.GreenDark
 import com.carled.app.presentation.theme.Ink

@@ -1,15 +1,17 @@
 package com.carled.app.data.remote.dto
 
 data class ClaimDeviceRequest(
-    val v: Int,
-    val sn: String,
-    val mac: String,
-    val sig: String
+    val qrPayload: String,
+    val deviceName: String? = null
 )
 
 data class ClaimDeviceResponse(
-    val id: String,
+    val deviceId: Long,
+    val serialNumber: String,
+    val macAddress: String,
     val deviceName: String,
-    val mac: String,
-    val sn: String
+    val modelId: Long? = null,
+    val modelName: String? = null,
+    val boundAt: String? = null,
+    val warrantyExpiresAt: String? = null
 )

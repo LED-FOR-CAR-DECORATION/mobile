@@ -1,5 +1,7 @@
 package com.carled.app.domain.model
 
+import com.carled.app.domain.model.ble.BleScanBlocker
+import com.carled.app.domain.model.ble.bleScanBlocker
 import org.junit.Assert.*
 import org.junit.Test
 

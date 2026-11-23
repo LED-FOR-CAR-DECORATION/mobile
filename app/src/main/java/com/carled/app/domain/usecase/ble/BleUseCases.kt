@@ -1,8 +1,8 @@
 package com.carled.app.domain.usecase.ble
 
 import com.carled.app.data.ble.TouchPoint
-import com.carled.app.domain.model.BleDeviceModel
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.ble.BleDeviceModel
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.model.DeviceTelemetryStatus
 import com.carled.app.domain.model.LedControlState
 import com.carled.app.domain.model.LedMode
@@ -116,9 +116,17 @@ class ReloadProjectionUseCase(private val repository: BleDeviceRepository) {
 }
 
 class UploadProjectionUseCase(private val repository: BleDeviceRepository) {
-    suspend operator fun invoke(rgb565Data: ByteArray, frameCount: Int = 1, frameDelayMs: Int = 200) {
+    /**
+     * FIX: width/height were previously hardcoded to 64×32 in the size check below,
+     * which threw on any 32×32 or 64×64 canvas (both valid per PixelDocument.sizes).
+     * Now takes the actual canvas dimensions so the byte-count check is correct
+     * for all three supported sizes — required for StudioViewModel.send() to work
+     * on anything other than 64×32, and for multi-frame scroll animations to pass
+     * their correct per-frame size through to this check.
+     */
+    suspend operator fun invoke(rgb565Data: ByteArray, width: Int, height: Int, frameCount: Int = 1, frameDelayMs: Int = 200) {
         require(frameCount in 1..255 && frameDelayMs in 1..65535)
-        require(rgb565Data.size == 64 * 32 * 2 * frameCount)
+        require(rgb565Data.size == width * height * 2 * frameCount)
         if (frameCount == 1 && frameDelayMs == 200) repository.uploadProjection(rgb565Data)
         else repository.uploadAnimation(rgb565Data, frameCount, frameDelayMs)
     }
@@ -154,7 +162,6 @@ class RenameDeviceUseCase(private val repository: BleDeviceRepository) {
 
 data class BleUseCases(
     val renameDevice: RenameDeviceUseCase,
-    // Scan / Connect
     val scanDevices: ScanDevicesUseCase,
     val stopScan: StopScanUseCase,
     val connectDevice: ConnectDeviceUseCase,
@@ -162,22 +169,18 @@ data class BleUseCases(
     val getScannedDevices: GetScannedDevicesUseCase,
     val getConnectionState: GetConnectionStateUseCase,
     val getLedState: GetLedStateUseCase,
-    // Basic LED
     val sendColorCommand: SendColorCommandUseCase,
     val sendModeCommand: SendModeCommandUseCase,
     val sendPowerCommand: SendPowerCommandUseCase,
     val sendBrightnessCommand: SendBrightnessCommandUseCase,
     val sendSensitivityCommand: SendSensitivityCommandUseCase,
-    // Advanced features
     val sendMarquee: SendMarqueeUseCase,
     val sendWifiConfig: SendWifiConfigUseCase,
     val clearCanvas: ClearCanvasUseCase,
     val reloadProjection: ReloadProjectionUseCase,
     val uploadProjection: UploadProjectionUseCase,
-    // Telemetry
     val getTelemetryStatus: GetTelemetryStatusUseCase,
     val getTelemetryEvent: GetTelemetryEventUseCase,
-    // Canvas draw
     val sendSinglePixel: SendSinglePixelUseCase,
     val sendBatchDraw: SendBatchDrawUseCase
 )

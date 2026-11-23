@@ -1,5 +1,6 @@
 package com.carled.app.presentation.navigation
 
+import com.carled.app.presentation.screens.marquee.MirageMarqueeScreen
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -17,7 +18,7 @@ import androidx.navigation.compose.*
 import com.carled.app.core.di.ServiceLocator
 import com.carled.app.data.local.MockCharacterInventory
 import com.carled.app.data.local.TextProfileStore
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.model.User
 import com.carled.app.presentation.screens.auth.*
 import com.carled.app.presentation.screens.canvas.*
@@ -25,6 +26,9 @@ import com.carled.app.presentation.screens.claim.ClaimDeviceScreen
 import com.carled.app.presentation.screens.claim.ClaimDeviceViewModel
 import com.carled.app.presentation.screens.control.*
 import com.carled.app.presentation.screens.main.MirageHomeScreen
+import com.carled.app.presentation.screens.main.HOME_TAB_HOME
+import com.carled.app.presentation.screens.main.HOME_TAB_LIBRARY
+import com.carled.app.presentation.screens.main.HOME_TAB_COMMISSION
 import com.carled.app.presentation.screens.marquee.*
 import com.carled.app.presentation.screens.scan.*
 import com.carled.app.presentation.screens.upload.*
@@ -43,14 +47,41 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
     val ownedDevices: OwnedDevicesViewModel = viewModel(factory = factory { OwnedDevicesViewModel(ServiceLocator.deviceRepository) })
     val userFlow = remember { ServiceLocator.authRepository.getCurrentUser() }
     val user by userFlow.collectAsState(initial = null)
+
+    LaunchedEffect(user?.id) {
+        if (user != null) ownedDevices.onUserLoggedIn()
+    }
+
+    val hasPersistedSession = remember {
+        ServiceLocator.userPreferences.getAuthToken()?.isNotBlank() == true
+    }
+    val start = if (hasPersistedSession) NavRoute.Main.route else NavRoute.Login.route
+
     val scope = rememberCoroutineScope()
-    val start = NavRoute.Login.route
+
+    val accountId = user?.id
+    val marquee: MarqueeViewModel? = accountId?.let { id ->
+        viewModel(
+            key = "marquee:$id",
+            factory = factory { MarqueeViewModel(ServiceLocator.bleUseCases, TextProfileStore(context, id)) }
+        )
+    }
 
     val goBack: () -> Unit = { navController.popBackStack() }
     val goScan: () -> Unit = { navController.navigate(NavRoute.Scan.route) }
     val logout: () -> Unit = {
         scope.launch {
             ServiceLocator.logoutUseCase()
+            navController.navigate(NavRoute.Login.route) { popUpTo(0) { inclusive = true } }
+        }
+    }
+
+    var wasLoggedIn by remember { mutableStateOf(hasPersistedSession) }
+    LaunchedEffect(user) {
+        if (user != null) {
+            wasLoggedIn = true
+        } else if (wasLoggedIn) {
+            wasLoggedIn = false
             navController.navigate(NavRoute.Login.route) { popUpTo(0) { inclusive = true } }
         }
     }
@@ -72,6 +103,7 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
             LoginScreen(
                 viewModel = vm,
                 onLoginSuccess = {
+                    ownedDevices.onUserLoggedIn()
                     navController.navigate(NavRoute.Main.route) {
                         popUpTo(NavRoute.Login.route) { inclusive = true }
                         launchSingleTop = true
@@ -80,10 +112,13 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
             )
         }
         composable(NavRoute.Main.route) {
-            HomeRoute(navController, control, scanner, ownedDevices, user, initialTab = 0, onLogout = logout)
+            HomeRoute(navController, control, scanner, ownedDevices, user, marquee, initialTab = HOME_TAB_HOME, onLogout = logout)
         }
         composable(NavRoute.Library.route) {
-            HomeRoute(navController, control, scanner, ownedDevices, user, initialTab = 1, onLogout = logout)
+            HomeRoute(navController, control, scanner, ownedDevices, user, marquee, initialTab = HOME_TAB_LIBRARY, onLogout = logout)
+        }
+        composable(NavRoute.Commission.route) {
+            HomeRoute(navController, control, scanner, ownedDevices, user, marquee, initialTab = HOME_TAB_COMMISSION, onLogout = logout)
         }
         composable(NavRoute.Scan.route) { MirageScanScreen(scanner) { goBack() } }
         composable(NavRoute.Effect.route) { MirageEffectScreen(control, goBack, goScan) }
@@ -119,19 +154,11 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                 }
             }
         }
-        composable(NavRoute.Marquee.route) { entry ->
-            val accountId = user?.id
-            if (accountId == null) {
+        composable(NavRoute.Marquee.route) {
+            if (marquee == null) {
                 RouteMessage("Đang tải tài khoản…")
             } else {
-                val vm: MarqueeViewModel = viewModel(
-                    entry,
-                    key = "marquee:$accountId",
-                    factory = factory {
-                        MarqueeViewModel(ServiceLocator.bleUseCases, TextProfileStore(context, accountId))
-                    }
-                )
-                MirageMarqueeScreen(vm, goBack)
+                MirageMarqueeScreen(marquee, goBack)
             }
         }
         composable(NavRoute.PanelControl.route) { entry ->
@@ -141,7 +168,13 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
         composable(NavRoute.ClaimDevice.route) { entry ->
             val vm: ClaimDeviceViewModel = viewModel(
                 entry,
-                factory = factory { ClaimDeviceViewModel(ServiceLocator.deviceClaimRepository, ServiceLocator.bleUseCases) }
+                factory = factory {
+                    ClaimDeviceViewModel(
+                        repository = ServiceLocator.deviceClaimRepository,
+                        deviceRepository = ServiceLocator.deviceRepository,
+                        bleUseCases = ServiceLocator.bleUseCases
+                    )
+                }
             )
             ClaimDeviceScreen(
                 vm = vm,
@@ -149,13 +182,10 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                 onFinished = { connected ->
                     ownedDevices.refresh()
                     if (connected) {
-                        // Claimed and already paired over BLE — go straight to its controls.
                         navController.navigate(NavRoute.PanelControl.create("current")) {
                             popUpTo(NavRoute.ClaimDevice.route) { inclusive = true }
                         }
                     } else {
-                        // Claimed, but not connected (auto-connect was off, cancelled, or failed).
-                        // Hand back to Home; the person can connect from there whenever they like.
                         goBack()
                     }
                 }
@@ -169,7 +199,8 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                 panelId = id,
                 back = goBack,
                 openPanelControl = { deviceId -> navController.navigate(NavRoute.PanelControl.create(deviceId)) },
-                connectDevice = { mac -> scanner.connectDevice(mac) }
+                connectDevice = { mac -> scanner.connectDevice(mac) },
+                disconnectDevice = { ServiceLocator.bleUseCases.disconnectDevice() }
             )
         }
     }
@@ -182,6 +213,7 @@ private fun HomeRoute(
     scanner: ScanViewModel,
     ownedDevices: OwnedDevicesViewModel,
     user: User?,
+    marquee: MarqueeViewModel?,
     initialTab: Int,
     onLogout: () -> Unit
 ) {
@@ -193,15 +225,12 @@ private fun HomeRoute(
         scanner = scanner,
         ownedDevices = ownedDevices,
         user = user,
+        marquee = marquee,
         openScan = { navController.navigate(NavRoute.Scan.route) },
         openControl = {
             if (connected) {
                 navController.navigate(NavRoute.PanelControl.create("current"))
             } else {
-                // NavRoute.Control ("control") has no destination registered in the
-                // NavHost below — navigating to it crashes with "Navigation destination
-                // ... cannot be found in the navigation graph". Nothing being BLE-connected
-                // yet means there's nothing to control, so send the person to pair first.
                 navController.navigate(NavRoute.Scan.route)
             }
         },

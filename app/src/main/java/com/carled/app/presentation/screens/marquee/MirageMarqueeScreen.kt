@@ -1,5 +1,7 @@
 package com.carled.app.presentation.screens.marquee
 
+import android.graphics.Color
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -7,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.carled.app.domain.model.*
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.presentation.components.*
 import com.carled.app.presentation.screens.canvas.ColorSwatch
 
@@ -18,10 +21,10 @@ fun MirageMarqueeScreen(vm: MarqueeViewModel, back: () -> Unit) {
     val static = state.scrollMode != "scroll_left"
     val valid = state.text.isNotBlank() && state.text.all { it.code in 32..126 }
     val preview = remember(state.text, state.size, state.scrollMode, state.r, state.g, state.b) {
-        val color = android.graphics.Color.rgb(state.r, state.g, state.b)
+        val color = Color.rgb(state.r, state.g, state.b)
         if (static) layout.render(color) else MarqueeLayout.movingPreview(state.text, state.size, color)
     }
-    androidx.activity.compose.BackHandler(state.isSending) { }
+    BackHandler(state.isSending) { }
     Scaffold(topBar = { MirageBar("Chạy chữ", { if (!state.isSending) back() }) }, containerColor = MirageBackground) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Một thông điệp, ngàn sắc màu", style = MaterialTheme.typography.headlineSmall)

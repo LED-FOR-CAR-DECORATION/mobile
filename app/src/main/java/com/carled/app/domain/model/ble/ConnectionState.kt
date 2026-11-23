@@ -1,4 +1,4 @@
-package com.carled.app.domain.model
+package com.carled.app.domain.model.ble
 
 /**
  * Trạng thái kết nối BLE của ứng dụng đối với ESP32 LED.

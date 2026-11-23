@@ -8,6 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.carled.app.core.di.ServiceLocator
 import com.carled.app.data.ble.TouchPoint
 import com.carled.app.domain.model.*
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.repository.BleDeviceRepository
 import com.carled.app.domain.usecase.ble.*
 import com.carled.app.presentation.screens.canvas.*
@@ -79,11 +80,12 @@ class DiyLiveTest {
   compose.runOnIdle { d.fail=true;vm.down(3,3);vm.end() }
   compose.waitUntil(5000) { !vm.state.value.liveEnabled }
   compose.runOnIdle { assertNotNull(vm.state.value.liveError);d.fail=false;vm.live(true) };settled(vm,d)
-  compose.runOnIdle { d.connectionState.value=ConnectionState.Disconnected }
+  compose.runOnIdle { d.connectionState.value= ConnectionState.Disconnected }
   compose.waitUntil(5000) { !vm.state.value.connected }
   val batches=d.batches
   compose.runOnIdle { vm.down(6,6);vm.end() }
-  compose.waitForIdle();compose.runOnIdle { assertEquals(batches,d.batches);d.connectionState.value=ConnectionState.Connected("Test LED","test") }
+  compose.waitForIdle();compose.runOnIdle { assertEquals(batches,d.batches);d.connectionState.value=
+         ConnectionState.Connected("Test LED","test") }
   settled(vm,d)
   compose.runOnIdle { assertTrue(d.clears>=3);vm.create(32,32) }
   val after=d.batches;compose.waitForIdle();compose.runOnIdle { assertEquals(after,d.batches);vm.send();assertEquals(0,d.uploads);vm.live(false) }

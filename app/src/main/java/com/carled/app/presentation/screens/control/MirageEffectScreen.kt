@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import com.carled.app.domain.model.*
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.presentation.components.*
 import com.carled.app.presentation.screens.canvas.ColorEditor
 import com.carled.app.presentation.screens.canvas.ColorSwatch

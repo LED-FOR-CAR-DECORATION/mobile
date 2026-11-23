@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.carled.app.domain.model.*
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.usecase.ble.BleUseCases
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -94,7 +95,7 @@ class UploadViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
                     val ack = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(30_000) {
                         bleUseCases.getTelemetryEvent().first { it is TelemetryEvent.UploadComplete || it is TelemetryEvent.UploadError }
                     } }
-                    bleUseCases.uploadProjection(document.rgb565())
+                    bleUseCases.uploadProjection(document.rgb565(), width = 64, height = 32)
                     _uiState.update { it.copy(feedbackMessage = "Đã gửi dữ liệu; chờ LED xác nhận…") }
                     when (val result = ack.await()) {
                         is TelemetryEvent.UploadComplete -> _uiState.update { it.copy(uploadStatus = UploadStatus.Complete, uploadProgress = 1f, feedbackMessage = "LED đã xác nhận nhận ảnh.") }

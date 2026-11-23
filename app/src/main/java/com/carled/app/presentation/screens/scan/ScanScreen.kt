@@ -20,8 +20,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.carled.app.domain.model.BleDeviceModel
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.ble.BleDeviceModel
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.presentation.components.StatusBadge
 import com.carled.app.presentation.theme.*
 

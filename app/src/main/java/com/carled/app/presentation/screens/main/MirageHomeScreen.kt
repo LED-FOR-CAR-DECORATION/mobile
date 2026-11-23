@@ -41,9 +41,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.carled.app.R
-import com.carled.app.domain.model.ConnectionState
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.model.User
-import com.carled.app.domain.model.isValidDeviceName
+import com.carled.app.domain.model.device.isValidDeviceName
 import com.carled.app.presentation.components.ChevronGlyph
 import com.carled.app.presentation.components.DeviceSection
 import com.carled.app.presentation.components.EmptyRow
@@ -58,38 +58,42 @@ import com.carled.app.presentation.screens.commission.CommissionScreen
 import com.carled.app.presentation.screens.control.ControlViewModel
 import com.carled.app.presentation.screens.control.MirageControlScreen
 import com.carled.app.presentation.screens.control.OwnedDevicesViewModel
+import com.carled.app.presentation.screens.marquee.MarqueeViewModel
+import com.carled.app.presentation.screens.marquee.TextProfilesState
 import com.carled.app.presentation.screens.profile.MirageProfileScreen
 import com.carled.app.presentation.screens.scan.ScanViewModel
 import com.carled.app.presentation.theme.Cream
 import com.carled.app.presentation.theme.Green
 import com.carled.app.presentation.theme.Ink
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 const val HOME_TAB_HOME = 0
 const val HOME_TAB_LIBRARY = 1
 const val HOME_TAB_CONTROL = 2
 const val HOME_TAB_ACCOUNT = 3
-private const val HOME_TAB_COMMISSION = 4
+const val HOME_TAB_COMMISSION = 4
 
-data class LetterProfile(val id: String, val name: String, val preview: String = "Abc")
-
-private object MockLetterProfileStore {
-    const val CAPACITY = 3
-    fun listSaved(userId: String): List<LetterProfile> =
-        if (userId.isBlank()) emptyList()
-        else listOf(LetterProfile("p1", "Profile 1"), LetterProfile("p2", "Profile 2"))
-}
+// MockLetterProfileStore / LetterProfile removed — the Home tab now reads
+// real, cache-backed profiles via MarqueeViewModel.profiles (the same
+// TextProfileRepository-backed state the Marquee screen already uses),
+// instead of two hardcoded fake entries that nothing could edit, delete,
+// or send.
 
 @Composable
-fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, ownedDevices: OwnedDevicesViewModel, user: User?,
-                     openScan: () -> Unit, openControl: () -> Unit, openCanvas: (String?) -> Unit,
-                     openMarquee: () -> Unit, openUpload: () -> Unit, logout: () -> Unit,
-                     openEffect: () -> Unit = {}, openCharacter: (String) -> Unit = {},
-                     openEditProfile: () -> Unit = {}, openLetterProfile: (String) -> Unit = {},
-                     openClaimDevice: () -> Unit = {},
-                     openDeviceInfo: (String) -> Unit = {},
-                     initialTab: Int = HOME_TAB_HOME) {
+fun MirageHomeScreen(
+    control: ControlViewModel, scanner: ScanViewModel, ownedDevices: OwnedDevicesViewModel, user: User?,
+    marquee: MarqueeViewModel?, // NEW — null only before an account id is available
+    openScan: () -> Unit, openControl: () -> Unit, openCanvas: (String?) -> Unit,
+    openMarquee: () -> Unit, openUpload: () -> Unit, logout: () -> Unit,
+    openEffect: () -> Unit = {}, openCharacter: (String) -> Unit = {},
+    openEditProfile: () -> Unit = {}, // kept — this is the USER/account "Edit" link below, unrelated to letter profiles
+    openClaimDevice: () -> Unit = {},
+    openDeviceInfo: (String) -> Unit = {},
+    initialTab: Int = HOME_TAB_HOME
+) {
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
     BackHandler(enabled = tab == HOME_TAB_COMMISSION) { tab = HOME_TAB_HOME }
     var confirmDisconnect by remember { mutableStateOf(false) }
@@ -105,20 +109,23 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, ownedDev
     val alias = device?.deviceName ?: "CarLED-Ambient"
     var draftName by remember { mutableStateOf(alias) }
     val titles = listOf("Trang chủ", "Nội dung LED", "Điều khiển", "Tài khoản")
+
+    val profilesFlow = remember(marquee) { marquee?.profiles ?: MutableStateFlow(TextProfilesState()).asStateFlow() }
+    val profilesState by profilesFlow.collectAsState()
+
     Scaffold(topBar = {
         if (tab == HOME_TAB_LIBRARY) {
             MirageBar(titles[tab])
         }
     }, bottomBar = {
         HardNavBar(
-            selectedIndex = if (tab == HOME_TAB_COMMISSION) HOME_TAB_HOME else tab,
+            selectedIndex = tab,
             onTabSelected = { tab = it },
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         )
     }, containerColor = MirageBackground) { padding ->
         when (tab) {
             HOME_TAB_HOME -> {
-                val profiles = remember(user) { MockLetterProfileStore.listSaved(user?.id ?: "") }
                 Box(Modifier.padding(padding).fillMaxSize().padding(8.dp)) {
                     WindowFrame(title = "Home", modifier = Modifier.fillMaxSize()) {
                         // Welcome back — ic_user remains 24.dp as requested
@@ -156,7 +163,6 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, ownedDev
 
                         // Quick start — icons scaled up to 48.dp (2x bigger)
                         DeviceSection(title = "Quick start") {
-                            MirageButton("Commission", { tab = HOME_TAB_COMMISSION }, Modifier.fillMaxWidth())
                             Row(
                                 Modifier.fillMaxWidth().flatSurface(color = Cream)
                                     .clickable(onClick = openUpload).padding(12.dp),
@@ -181,17 +187,38 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, ownedDev
                                 Text("Bind new device with account with QRcode.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
                                 ChevronGlyph()
                             }
+                            Row(
+                                Modifier.fillMaxWidth().flatSurface(color = Cream)
+                                    .clickable { tab = HOME_TAB_COMMISSION }.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                                    Image(painterResource(R.drawable.ic_qrcode), contentDescription = null, modifier = Modifier.size(48.dp))
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Text("Commission a custom LED design from our team.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                ChevronGlyph()
+                            }
                         }
 
-                        // Saved letter profile — icon scaled up to 48.dp (2x bigger)
-                        DeviceSection(title = "Saved letter profile  ${profiles.size}/${MockLetterProfileStore.CAPACITY}") {
-                            if (profiles.isEmpty()) {
-                                EmptyRow("Chưa có bản lưu nào.")
-                            } else {
-                                profiles.forEach { profile ->
+                        // Saved letter profile — now real, cache-backed data from
+                        // MarqueeViewModel.profiles (TextProfileRepository), capped
+                        // at profilesState.plan.limit (3, per TextProfilePlan.BASIC).
+                        DeviceSection(title = "Saved letter profile  ${profilesState.entries.size}/${profilesState.plan.limit}") {
+                            when {
+                                marquee == null -> EmptyRow("Đăng nhập để xem profile đã lưu.")
+                                profilesState.entries.isEmpty() -> EmptyRow("Chưa có bản lưu nào. Tạo profile mới bên dưới.")
+                                else -> profilesState.entries.forEach { profile ->
                                     Row(
                                         Modifier.fillMaxWidth().flatSurface(color = Cream)
-                                            .clickable { openLetterProfile(profile.id) }.padding(12.dp),
+                                            .clickable {
+                                                // Instant send: load this profile's text,
+                                                // colors, speed and effect into state, then
+                                                // send straight to the LED — no extra screen.
+                                                marquee.selectProfile(profile.id)
+                                                marquee.sendMarquee()
+                                            }
+                                            .padding(12.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
@@ -202,10 +229,20 @@ fun MirageHomeScreen(control: ControlViewModel, scanner: ScanViewModel, ownedDev
                                             )
                                         }
                                         Spacer(Modifier.width(12.dp))
-                                        Text(profile.name, color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                                        ChevronGlyph()
+                                        Column(Modifier.weight(1f)) {
+                                            Text(profile.name, color = Ink, fontSize = 14.sp)
+                                            Text(profile.text, color = MirageMuted, fontSize = 12.sp, maxLines = 1)
+                                        }
+                                        // Edit opens the full Marquee editor. It does NOT yet
+                                        // pre-load this specific profile there — openMarquee()
+                                        // takes no profile id today. Flagged, not silently implied.
+                                        TextButton(onClick = { openMarquee() }) { Text("Sửa") }
+                                        TextButton(onClick = { marquee.deleteProfile(profile.id) }) { Text("Xóa") }
                                     }
                                 }
+                            }
+                            if (marquee != null) {
+                                MirageButton("+ Tạo profile mới", openMarquee, Modifier.fillMaxWidth())
                             }
                         }
 

@@ -5,15 +5,23 @@ import com.carled.app.BuildConfig
 import com.carled.app.data.ble.CarLedBleManager
 import com.carled.app.data.local.UserPreferences
 import com.carled.app.data.remote.ApiService
+import com.carled.app.data.remote.CommissionChatSocket
 import com.carled.app.data.repository.AuthRepositoryImpl
 import com.carled.app.data.repository.BleDeviceRepositoryImpl
 import com.carled.app.data.repository.DeviceClaimRepositoryImpl
 import com.carled.app.data.repository.DeviceRepositoryImpl
 import com.carled.app.data.repository.ProductRepositoryImpl
+import com.carled.app.data.remote.dto.RefreshTokenRequest
+import com.carled.app.data.repository.CommissionPricingRepositoryImpl
+import com.carled.app.data.repository.CommissionRepositoryImpl
+import com.carled.app.data.repository.MediaRepositoryImpl
 import com.carled.app.domain.repository.AuthRepository
 import com.carled.app.domain.repository.BleDeviceRepository
+import com.carled.app.domain.repository.CommissionPricingRepository
+import com.carled.app.domain.repository.CommissionRepository
 import com.carled.app.domain.repository.DeviceClaimRepository
 import com.carled.app.domain.repository.DeviceRepository
+import com.carled.app.domain.repository.MediaRepository
 import com.carled.app.domain.repository.ProductRepository
 import com.carled.app.domain.usecase.auth.GoogleAuthUseCase
 import com.carled.app.domain.usecase.ble.*
@@ -24,6 +32,8 @@ import com.carled.app.domain.usecase.auth.ResendVerificationUseCase
 import com.carled.app.domain.usecase.auth.VerifyEmailUseCase
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import kotlinx.coroutines.runBlocking
+import okhttp3.Authenticator
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -37,15 +47,73 @@ object ServiceLocator {
         appContext = context.applicationContext
     }
 
-    private fun requireContext(): Context {
-        return appContext ?: throw IllegalStateException("ServiceLocator chưa được khởi tạo với Context")
-    }
+    private fun requireContext(): Context =
+        appContext ?: throw IllegalStateException("ServiceLocator chưa được khởi tạo với Context")
 
     // -------------------------------------------------------------------------
     // Network
     // -------------------------------------------------------------------------
 
     val gson: Gson = GsonBuilder().create()
+
+    val plainHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+
+    private val refreshApiService: ApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(BuildConfig.BASE_URL)
+            .client(plainHttpClient)
+            .addConverterFactory(GsonConverterFactory.create(gson))
+            .build()
+            .create(ApiService::class.java)
+    }
+
+    private val tokenAuthenticator: Authenticator by lazy {
+        Authenticator { _, response ->
+            if (response.responseCount() > 1) return@Authenticator null
+
+            val refreshToken = userPreferences.getRefreshToken()
+                ?: return@Authenticator run { authRepository.notifySessionExpired(); null }
+
+            synchronized(this) {
+                val currentStored = userPreferences.getAuthToken()
+                val requestToken = response.request.header("Authorization")?.removePrefix("Bearer ")
+                if (currentStored != null && currentStored != requestToken) {
+                    return@Authenticator response.request.newBuilder()
+                        .header("Authorization", "Bearer $currentStored")
+                        .build()
+                }
+
+                val newData = runBlocking {
+                    try {
+                        val r = refreshApiService.refreshToken(RefreshTokenRequest(refreshToken))
+                        if (r.isSuccessful) r.body()?.data else null
+                    } catch (e: java.io.IOException) {
+                        return@runBlocking null
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+
+                if (newData == null) {
+                    authRepository.notifySessionExpired()
+                    return@Authenticator null
+                }
+
+                userPreferences.saveAuthToken(newData.accessToken)
+                userPreferences.saveRefreshToken(newData.refreshToken)
+
+                response.request.newBuilder()
+                    .header("Authorization", "Bearer ${newData.accessToken}")
+                    .build()
+            }
+        }
+    }
 
     private val okHttpClient: OkHttpClient by lazy {
         val logging = HttpLoggingInterceptor().apply {
@@ -56,6 +124,7 @@ object ServiceLocator {
         }
         OkHttpClient.Builder()
             .addInterceptor(logging)
+            .authenticator(tokenAuthenticator)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
@@ -71,7 +140,6 @@ object ServiceLocator {
             .create(ApiService::class.java)
     }
 
-
     val userPreferences: UserPreferences by lazy {
         UserPreferences(requireContext())
     }
@@ -80,9 +148,11 @@ object ServiceLocator {
         CarLedBleManager(requireContext())
     }
 
-
     val bleDeviceRepository: BleDeviceRepository by lazy {
-        BleDeviceRepositoryImpl(bleManager)
+        BleDeviceRepositoryImpl(
+            bleManager = bleManager,
+            isMacOwned = deviceRepository::isMacOwned
+        )
     }
 
     val authRepository: AuthRepository by lazy {
@@ -97,10 +167,8 @@ object ServiceLocator {
         ProductRepositoryImpl(apiService, gson)
     }
 
-    // Same token source + header format AuthRepositoryImpl uses for
-    // apiService.getCurrentUserProfile("Bearer $token").
     private val deviceAuthHeaderProvider: suspend () -> String? = {
-        userPreferences.getAuthToken()?.takeIf { it.isNotBlank() }?.let { token -> "Bearer $token" }
+        userPreferences.getAuthToken()?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
     }
 
     val deviceClaimRepository: DeviceClaimRepository by lazy {
@@ -109,13 +177,29 @@ object ServiceLocator {
 
     val deviceRepository: DeviceRepository by lazy {
         DeviceRepositoryImpl(
-            api = apiService,
-            userPreferences = userPreferences,
-            gson = gson,
+            api                = apiService,
+            userPreferences    = userPreferences,
+            gson               = gson,
             authHeaderProvider = deviceAuthHeaderProvider
         )
     }
 
+    val commissionPricingRepository: CommissionPricingRepository by lazy {
+        CommissionPricingRepositoryImpl(apiService)
+    }
+    val commissionRepository: CommissionRepository by lazy {
+        CommissionRepositoryImpl(apiService, deviceAuthHeaderProvider, gson)
+    }
+    val commissionChatSocket: CommissionChatSocket by lazy {
+        val wsBase = BuildConfig.BASE_URL
+            .replace("https://", "wss://")
+            .replace("http://", "ws://")
+            .trimEnd('/')
+        CommissionChatSocket(okHttpClient, wsBase, gson)
+    }
+    val mediaRepository: MediaRepository by lazy {
+        MediaRepositoryImpl(requireContext(), apiService, plainHttpClient, deviceAuthHeaderProvider)
+    }
 
 
     val bleUseCases: BleUseCases by lazy {
@@ -145,26 +229,21 @@ object ServiceLocator {
         )
     }
 
-    val loginUseCase: LoginUseCase by lazy {
-        LoginUseCase(authRepository)
-    }
+    val loginUseCase: LoginUseCase by lazy { LoginUseCase(authRepository) }
+    val registerUseCase: RegisterUseCase by lazy { RegisterUseCase(authRepository) }
+    val logoutUseCase: LogoutUseCase by lazy { LogoutUseCase(authRepository) }
+    val verifyEmailUseCase: VerifyEmailUseCase by lazy { VerifyEmailUseCase(authRepository) }
+    val resendVerificationUseCase: ResendVerificationUseCase by lazy { ResendVerificationUseCase(authRepository) }
+    val googleAuthUseCase: GoogleAuthUseCase by lazy { GoogleAuthUseCase(authRepository) }
+}
 
-    val registerUseCase: RegisterUseCase by lazy {
-        RegisterUseCase(authRepository)
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+// Private helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
-    val logoutUseCase: LogoutUseCase by lazy {
-        LogoutUseCase(authRepository)
-    }
-
-    val verifyEmailUseCase: VerifyEmailUseCase by lazy {
-        VerifyEmailUseCase(authRepository)
-    }
-
-    val resendVerificationUseCase: ResendVerificationUseCase by lazy {
-        ResendVerificationUseCase(authRepository)
-    }
-    val googleAuthUseCase: GoogleAuthUseCase by lazy {
-        GoogleAuthUseCase(authRepository)
-    }
+private fun okhttp3.Response.responseCount(): Int {
+    var count = 1
+    var prior = priorResponse
+    while (prior != null) { count++; prior = prior.priorResponse }
+    return count
 }

@@ -105,3 +105,24 @@ fun ChevronGlyph(modifier: Modifier = Modifier, color: Color = Ink, size: Dp = 1
         drawLine(color, Offset(w * 0.7f, h * 0.5f), Offset(w * 0.3f, h * 0.8f), strokeWidth = s)
     }
 }
+
+@Composable
+fun CommissionGlyph(modifier: Modifier = Modifier, color: Color = Green, size: Dp = 18.dp) {
+    Canvas(modifier.size(size)) {
+        val w = this.size.width; val h = this.size.height; val s = 1.6.dp.toPx()
+        // Handle
+        drawLine(color, Offset(w * 0.20f, h * 0.88f), Offset(w * 0.58f, h * 0.50f), strokeWidth = s)
+        // Ferrule band where bristles meet the handle
+        drawLine(color, Offset(w * 0.52f, h * 0.56f), Offset(w * 0.70f, h * 0.38f), strokeWidth = s * 1.6f)
+        // Bristle tip
+        val tip = Path().apply {
+            moveTo(w * 0.66f, h * 0.34f)
+            lineTo(w * 0.92f, h * 0.08f)
+            lineTo(w * 0.80f, h * 0.44f)
+            close()
+        }
+        drawPath(tip, color, style = Stroke(s))
+        // Paint dab left by the handle's tip
+        drawCircle(color, radius = s * 0.9f, center = Offset(w * 0.16f, h * 0.90f))
+    }
+}

@@ -1,4 +1,4 @@
-package com.carled.app.domain.model
+package com.carled.app.domain.model.device
 
 /** Complete local name occupies at most 29 bytes in a legacy BLE scan response. */
 fun isValidDeviceName(value: String): Boolean {

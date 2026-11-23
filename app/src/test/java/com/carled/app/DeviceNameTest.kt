@@ -1,6 +1,6 @@
 package com.carled.app
 
-import com.carled.app.domain.model.isValidDeviceName
+import com.carled.app.domain.model.device.isValidDeviceName
 import com.carled.app.domain.model.isLedAdvertisement
 import org.junit.Assert.*
 import org.junit.Test
