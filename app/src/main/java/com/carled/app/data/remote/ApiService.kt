@@ -129,7 +129,7 @@ interface ApiService {
     suspend fun createCommission(
         @Header("Authorization") authorization: String,
         @Body request: CreateCommissionRequest
-    ): Response<CommissionResponse>
+    ): Response<ApiResponse<CommissionResponse>>
 
     @GET("api/commissions/my")
     suspend fun getMyCommissions(

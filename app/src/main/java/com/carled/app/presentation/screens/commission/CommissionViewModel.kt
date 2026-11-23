@@ -302,6 +302,7 @@ internal class CommissionViewModel(
             when (val result = repository.confirmRevisionCard(id, messageId)) {
                 is Resource.Success -> {
                     _actionResult.value = Resource.Success(Unit)
+                    loadMessages(id)
                     loadDetail(id)
                     loadCommissions()
                 }
@@ -314,9 +315,16 @@ internal class CommissionViewModel(
     fun cancelRevisionCard(id: Long) {
         viewModelScope.launch {
             _actionResult.value = Resource.Loading
-            _actionResult.value = repository.cancelRevisionCard(id)
-            loadDetail(id)
-            loadCommissions()
+            when (val result = repository.cancelRevisionCard(id)) {
+                is Resource.Success -> {
+                    _actionResult.value = Resource.Success(Unit)
+                    loadMessages(id)
+                    loadDetail(id)
+                    loadCommissions()
+                }
+                is Resource.Error -> _actionResult.value = Resource.Error(result.message)
+                Resource.Loading -> Unit
+            }
         }
     }
 

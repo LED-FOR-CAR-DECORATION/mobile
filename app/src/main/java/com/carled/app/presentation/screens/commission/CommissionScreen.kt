@@ -57,9 +57,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.IOException
-import java.net.URL
 import java.text.NumberFormat
 import java.util.Locale
+import com.carled.app.core.di.ServiceLocator
+import okhttp3.Request
 
 private const val MAX_REFERENCES = 5
 private val CardShape = RoundedCornerShape(3.dp)
@@ -69,6 +70,10 @@ private val ImagePickerRequest = PickVisualMediaRequest(ActivityResultContracts.
 
 private enum class CommissionTab(val label: String) {
     CREATE("Create request"), PROGRESS("Progress tracking"), INBOX("Inbox")
+}
+private fun extractJsonField(json: String?, field: String): String? {
+    if (json.isNullOrBlank()) return null
+    return try { org.json.JSONObject(json).optString(field).takeIf { it.isNotBlank() } } catch (e: Exception) { null }
 }
 
 @Composable
@@ -442,13 +447,9 @@ private fun PaymentDialog(paymentCode: String, model: CommissionViewModel, onClo
     val paymentState by model.payment.collectAsState()
 
     LaunchedEffect(paymentCode) { model.loadPayment(paymentCode) }
-    // Polls every 3s while PENDING — the server confirms via SePay webhook
-    // independently of this screen; this just picks up the resulting status.
-    LaunchedEffect(paymentState) {
-        val pending = (paymentState as? Resource.Success)?.data?.takeIf { it.status == "PENDING" } ?: return@LaunchedEffect
-        delay(3000)
-        model.loadPayment(paymentCode)
-    }
+    // No timer-based polling. The only automatic network calls here are the
+    // single initial fetch above and whatever the user explicitly triggers
+    // with the "Check now" button below.
 
     Dialog(onDismissRequest = onClose) {
         WindowFrame("SePay · Thanh toán", Modifier.fillMaxWidth(), onClose = onClose, compact = true) {
@@ -460,17 +461,23 @@ private fun PaymentDialog(paymentCode: String, model: CommissionViewModel, onClo
                 }
                 is Resource.Success -> {
                     val session = state.data
+                    val now = remember { System.currentTimeMillis() }
+                    val expiresAtMillis = remember(session.expiresAt) { parseIsoToMillis(session.expiresAt) }
+                    val isExpired = expiresAtMillis != null && now >= expiresAtMillis
+
                     SectionTitle(
-                        when (session.status) {
-                            "SUCCEEDED" -> "Đã thanh toán"
-                            "EXPIRED" -> "Đã hết hạn"
-                            "CANCELLED", "FAILED" -> "Thanh toán thất bại"
+                        when {
+                            session.status == "SUCCEEDED" -> "Đã thanh toán"
+                            session.status == "EXPIRED" || isExpired -> "Đã hết hạn"
+                            session.status == "CANCELLED" || session.status == "FAILED" -> "Thanh toán thất bại"
                             else -> "Đang chờ chuyển khoản"
                         }
                     )
-                    if (session.status == "PENDING") {
+
+                    if (session.status == "PENDING" && !isExpired) {
                         session.qrUrl?.let { url -> RemoteImagePreview(url, "Mã QR thanh toán", Modifier.size(220.dp)) }
                     }
+
                     Column(
                         Modifier.fillMaxWidth().background(GreenLight).border(1.dp, Ink).padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -481,18 +488,30 @@ private fun PaymentDialog(paymentCode: String, model: CommissionViewModel, onClo
                         Text("Chủ tài khoản: ${session.accountName}", color = Ink)
                         Text("Nội dung chuyển khoản: ${session.paymentCode}", color = Ink)
                     }
-                    if (session.status == "PENDING") {
-                        // Staging-only shortcut — real customers transfer via the QR
-                        // above; the server's SePay webhook confirms automatically.
-                        MirageButton("Mô phỏng thanh toán thành công (staging)", { model.mockPaySuccess(paymentCode) }, Modifier.fillMaxWidth())
-                    } else {
-                        MirageButton("Đóng", onClose, Modifier.fillMaxWidth())
+
+                    when {
+                        session.status == "PENDING" && isExpired -> {
+                            Text(
+                                "Phiên thanh toán này đã hết hạn. Vui lòng liên hệ hỗ trợ hoặc kiểm tra lại yêu cầu commission.",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            MirageButton("Đóng", onClose, Modifier.fillMaxWidth())
+                        }
+                        session.status == "PENDING" -> {
+                            MirageButton("Tôi đã chuyển khoản · Kiểm tra ngay", { model.loadPayment(paymentCode) }, Modifier.fillMaxWidth())
+                            MirageButton("Mô phỏng thanh toán thành công (staging)", { model.mockPaySuccess(paymentCode) }, Modifier.fillMaxWidth(), secondary = true)
+                        }
+                        else -> MirageButton("Đóng", onClose, Modifier.fillMaxWidth())
                     }
                 }
             }
         }
     }
 }
+
+private fun parseIsoToMillis(iso: String?): Long? = try {
+    iso?.let { java.time.Instant.parse(it).toEpochMilli() }
+} catch (e: Exception) { null }
 
 @Composable
 private fun CommissionConversation(commissionId: Long, model: CommissionViewModel, onClose: () -> Unit) {
@@ -505,9 +524,12 @@ private fun CommissionConversation(commissionId: Long, model: CommissionViewMode
     val messagesState by model.messages.collectAsState()
     val messages = (messagesState[commissionId] as? Resource.Success)?.data.orEmpty()
     val actionResult by model.actionResult.collectAsState()
+    val detailState by model.detail.collectAsState()
+    val commissionStatus = (detailState[commissionId] as? Resource.Success)?.data?.status
 
     DisposableEffect(commissionId) {
         model.loadMessages(commissionId)
+        model.loadDetail(commissionId) // needed so action cards can gate on the live status, not just their own metadataJson
         model.connectChat(commissionId)
         onDispose { model.disconnectChat() }
     }
@@ -515,10 +537,8 @@ private fun CommissionConversation(commissionId: Long, model: CommissionViewMode
         if (scroll.maxValue != Int.MAX_VALUE) scroll.scrollTo(scroll.maxValue)
     }
     LaunchedEffect(actionResult) {
-        if (actionResult != null) {
-            model.loadMessages(commissionId)
-            model.consumeActionResult()
-        }
+        val result = actionResult ?: return@LaunchedEffect
+        if (result is Resource.Success) model.consumeActionResult()
     }
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -565,15 +585,15 @@ private fun CommissionConversation(commissionId: Long, model: CommissionViewMode
             when (val state = messagesState[commissionId]) {
                 is Resource.Loading -> CircularProgressIndicator(color = Ink)
                 is Resource.Error -> Text(state.message, color = Ink)
-                else -> messages.forEach { message -> MessageBubble(commissionId, message, model) }
+                else -> messages.forEach { message -> MessageBubble(commissionId, message, model, commissionStatus) }
             }
         }
     }
 }
-
 @Composable
-private fun MessageBubble(commissionId: Long, message: CommissionMessageResponse, model: CommissionViewModel) {
+private fun MessageBubble(commissionId: Long, message: CommissionMessageResponse, model: CommissionViewModel, commissionStatus: String?) {
     val outgoing = message.senderRole == "CUSTOMER"
+    val actionable = commissionStatus == "PREVIEW_DELIVERED"
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = if (outgoing) Arrangement.End else Arrangement.Start,
@@ -590,14 +610,25 @@ private fun MessageBubble(commissionId: Long, message: CommissionMessageResponse
                     Text("Bản xem trước đã sẵn sàng", color = Ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                     message.content?.let { Text(it, color = Ink) }
                     message.mediaUrl?.let { url -> RemoteImagePreview(url, "Deliverable preview", Modifier.size(158.dp, 90.dp)) }
-                    MirageButton("Duyệt bản xem trước", { model.approveDeliverable(commissionId) }, Modifier.fillMaxWidth())
+                    if (actionable) {
+                        MirageButton("Duyệt bản xem trước", { model.approveDeliverable(commissionId) }, Modifier.fillMaxWidth())
+                    } else {
+                        Text("Yêu cầu này không còn khả dụng.", color = Ink, style = MaterialTheme.typography.labelSmall)
+                    }
                 }
                 "EXTRA_FEE_CARD" -> {
+                    val cardStatus = extractJsonField(message.metadataJson, "status")
                     Text("Yêu cầu phụ phí sửa đổi", color = Ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                     message.content?.let { Text(it, color = Ink) }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MirageButton("Xác nhận", { model.confirmRevisionCard(commissionId, message.messageId) }, Modifier.weight(1f))
-                        MirageButton("Huỷ", { model.cancelRevisionCard(commissionId) }, Modifier.weight(1f), secondary = true)
+                    when {
+                        cardStatus != null && cardStatus != "PENDING" ->
+                            Text("Trạng thái: $cardStatus", color = Ink, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        !actionable ->
+                            Text("Yêu cầu này không còn khả dụng.", color = Ink, style = MaterialTheme.typography.labelSmall)
+                        else -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            MirageButton("Xác nhận", { model.confirmRevisionCard(commissionId, message.messageId) }, Modifier.weight(1f))
+                            MirageButton("Huỷ", { model.cancelRevisionCard(commissionId) }, Modifier.weight(1f), secondary = true)
+                        }
                     }
                 }
                 "SYSTEM" -> Text(message.content.orEmpty(), color = Ink, style = MaterialTheme.typography.bodySmall)
@@ -610,7 +641,6 @@ private fun MessageBubble(commissionId: Long, message: CommissionMessageResponse
         if (outgoing) MessageAvatar(Cream, Modifier.padding(start = 8.dp))
     }
 }
-
 @Composable
 private fun MessageAvatar(color: Color, modifier: Modifier) {
     Box(modifier.size(24.dp).background(color, CircleShape).border(1.dp, Ink, CircleShape))
@@ -657,9 +687,21 @@ private fun RemoteImagePreview(url: String, label: String, modifier: Modifier) {
     val state by produceState<RemotePreviewState>(RemotePreviewState.Loading, url) {
         value = withContext(Dispatchers.IO) {
             try {
-                val bitmap = URL(url).openStream().use { BitmapFactory.decodeStream(it) }
-                if (bitmap != null) RemotePreviewState.Loaded(bitmap.asImageBitmap()) else RemotePreviewState.Failed
-            } catch (_: Exception) {
+                val request = Request.Builder().url(url).build()
+                ServiceLocator.plainHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        android.util.Log.e("RemoteImagePreview", "Fetch failed: HTTP ${response.code} for $url")
+                        return@use RemotePreviewState.Failed
+                    }
+                    val bitmap = response.body?.byteStream()?.let { BitmapFactory.decodeStream(it) }
+                    if (bitmap != null) RemotePreviewState.Loaded(bitmap.asImageBitmap())
+                    else {
+                        android.util.Log.e("RemoteImagePreview", "Decode returned null for $url")
+                        RemotePreviewState.Failed
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("RemoteImagePreview", "Fetch threw for $url", e)
                 RemotePreviewState.Failed
             }
         }

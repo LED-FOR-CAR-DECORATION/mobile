@@ -30,9 +30,7 @@ class CommissionRepositoryImpl(
         return try {
             val response = api.createCommission(authHeader, request)
             if (response.isSuccessful) {
-                // NOT wrapped in ApiResponse — the body is CustomerCommissionDetailResponse
-                // directly (confirmed via /v3/api-docs), unlike every GET endpoint here.
-                val body = response.body() ?: return Resource.Error("Phản hồi từ máy chủ trống")
+                val body = response.body()?.data ?: return Resource.Error("Phản hồi từ máy chủ trống")
                 Resource.Success(body)
             } else {
                 Resource.Error(parseErrorBody(response, "Không thể gửi yêu cầu commission (lỗi ${response.code()})."))
