@@ -24,6 +24,7 @@ import com.carled.app.domain.model.commission.CreateCommissionRequest
 import com.carled.app.domain.model.commission.PricingRule
 import com.carled.app.domain.model.commission.SelectedOptionInput
 import com.carled.app.domain.model.commission.SelectionType
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -237,11 +238,18 @@ internal class CommissionViewModel(
         }
     }
 
+    // The viewModel itself is scoped per-user (viewModel(key = "commission:${user.id}")),
+    // so it outlives the chat dialog. Without tracking this job, every
+    // connectChat() call stacked another collector on chatSocket.incoming that
+    // disconnectChat() never cancelled — they'd pile up across repeated visits.
+    private var chatJob: Job? = null
+
     /** Call when a commission's chat screen becomes visible. Pair with [disconnectChat] in onDispose. */
     fun connectChat(id: Long) {
         val token = ServiceLocator.userPreferences.getAuthToken() ?: return
         chatSocket.connect(id, token)
-        viewModelScope.launch {
+        chatJob?.cancel()
+        chatJob = viewModelScope.launch {
             chatSocket.incoming.collect { incoming ->
                 if (incoming.commissionId != id) return@collect
                 appendMessage(id, incoming)
@@ -251,6 +259,8 @@ internal class CommissionViewModel(
 
     fun disconnectChat() {
         chatSocket.disconnect()
+        chatJob?.cancel()
+        chatJob = null
     }
 
     fun sendMessage(id: Long, text: String, imageUri: Uri? = null) {
@@ -287,6 +297,7 @@ internal class CommissionViewModel(
     override fun onCleared() {
         super.onCleared()
         chatSocket.disconnect()
+        chatJob?.cancel()
     }
 
     fun loadPayment(code: String) {

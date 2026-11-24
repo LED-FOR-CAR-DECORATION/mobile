@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Khai báo phần cứng bắt buộc: Bluetooth Low Energy -->
     <uses-feature
@@ -10,15 +11,33 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Quyền Bluetooth cho Android 12+ (API 31 trở lên) -->
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <!-- Quyền Bluetooth cho Android 12+ (API 31 trở lên).
+         usesPermissionFlags is a no-op below API 31 (this app's minSdk) by
+         design — the legacy BLUETOOTH/BLUETOOTH_ADMIN permissions below cover
+         pre-31 instead, so this is safe to ignore rather than remove. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"
+        tools:ignore="UnusedAttribute" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
-    <!-- Quyền dự phòng cho Android <= 30 & hỗ trợ quét BLE đầy đủ -->
+    <!-- Quyền đọc tên mạng Wi-Fi đang kết nối (API 33+), dùng cho tính năng
+         tự động điền SSID khi cập nhật firmware qua Wi-Fi. Same no-op-below-33
+         reasoning as BLUETOOTH_SCAN above. -->
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation"
+        tools:ignore="UnusedAttribute" />
+
+    <!-- Quyền dự phòng cho Android <= 30 & hỗ trợ quét BLE đầy đủ.
+         ACCESS_FINE_LOCATION is NOT capped with maxSdkVersion here — unlike
+         the BLE-scan-only use that originally justified capping it at 30,
+         currentWifiSsid() also needs this permission uncapped on API 31-32,
+         where NEARBY_WIFI_DEVICES doesn't yet exist as an alternative.
+         ACCESS_COARSE_LOCATION is uncapped to match — Android requires both
+         fine and coarse location to be declared together, with the same
+         maxSdkVersion scope, whenever fine location is requested. -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 

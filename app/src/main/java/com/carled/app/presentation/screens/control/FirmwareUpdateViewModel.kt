@@ -56,8 +56,13 @@ class FirmwareUpdateViewModel(
     }
 
     fun configureWifi(ssid: String, password: String) = runAction {
+        val currentInfo = ble.readInfo(mac)
+        if (currentInfo.wifi) {
+            _state.update { it.copy(info = currentInfo, message = "Thiết bị đã kết nối Wi-Fi.") }
+            return@runAction
+        }
         ble.configureWifi(mac, ssid, password)
-        _state.update { it.copy(message = "Đang chờ thiết bị kết nối Wi-Fi…") }
+        _state.update { it.copy(info = currentInfo, message = "Đang chờ thiết bị kết nối Wi-Fi…") }
         withTimeout(60_000) {
             do {
                 delay(3_000)

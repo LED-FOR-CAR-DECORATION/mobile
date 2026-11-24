@@ -48,7 +48,10 @@ fun DeviceInfoScreen(
     val detailState = deviceIdLong?.let { detailStates[it] }
     val detail = (detailState as? DeviceDetailUiState.Loaded)?.detail
 
-    val deviceName = detail?.deviceName ?: listDevice?.deviceName
+    var confirmedName by remember(panelId, detail?.deviceName, listDevice?.deviceName) {
+        mutableStateOf<String?>(null)
+    }
+    val deviceName = confirmedName ?: detail?.deviceName ?: listDevice?.deviceName
     val macAddress = detail?.macAddress ?: listDevice?.macAddress
     val serialNumber = detail?.serialNumber ?: listDevice?.serialNumber
     val boundAt = detail?.boundAt ?: listDevice?.lastUpdated
@@ -116,12 +119,6 @@ fun DeviceInfoScreen(
             .systemBarsPadding()
             .padding(8.dp)
     ) {
-        // FIX: no wrapping Column(...verticalScroll...) here — WindowFrame's own
-        // content Column already applies verticalScroll internally. Stacking a
-        // second verticalScroll Column around it gave the inner one an unbounded
-        // (infinity) height constraint, which Compose disallows and crashed on.
-        // Items are now placed directly in this ColumnScope, matching how
-        // MirageControlScreen uses WindowFrame (no extra scroll wrapper there either).
         WindowFrame(title = "Thông tin thiết bị", onClose = back, modifier = Modifier.fillMaxSize()) {
             if (deviceName == null) {
                 Text(
@@ -258,7 +255,12 @@ fun DeviceInfoScreen(
                     renameScope.launch {
                         try {
                             vm.renameDevice(draftName)
+                            confirmedName = draftName
                             rename = false
+                            if (deviceIdLong != null) {
+                                ownedDevices.loadDeviceDetail(deviceIdLong)
+                            }
+                            ownedDevices.refresh()
                         } catch (e: CancellationException) {
                             if (e is kotlinx.coroutines.TimeoutCancellationException) {
                                 renameError = "LED chưa xác nhận. Kiểm tra kết nối và cập nhật firmware LED."

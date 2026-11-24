@@ -4,6 +4,7 @@
         <domain includeSubdomains="false">10.0.2.2</domain>      <!-- emulator -->
         <domain includeSubdomains="false">172.16.130.64</domain>
         <domain includeSubdomains="false">https://tax-sims-moss-entries.trycloudflare.com/</domain>
-        <domain includeSubdomains="false">https://lumintra-backend-staging.bluedesert-a7b94014.eastasia.azurecontainerapps.io/</domain> <!-- physical device -->
+        <domain includeSubdomains="false">https://dev-api.lumintra.shop/</domain>
+        <domain includeSubdomains="false">https://lumintra-backend-staging.bluedesert-a7b94014.eastasia.azurecontainerapps.io/</domain><!-- physical device -->
     </domain-config>
 </network-security-config>

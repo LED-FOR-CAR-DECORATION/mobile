@@ -137,6 +137,11 @@ object ServiceLocator {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            // Needed for CommissionChatSocket's long-lived WebSocket: without a
+            // ping interval OkHttp never notices an idled/dead connection (NAT
+            // timeout, proxy, backgrounding), so live chat messages would stop
+            // arriving until something forced a fresh connect.
+            .pingInterval(15, TimeUnit.SECONDS)
             .build()
     }
 

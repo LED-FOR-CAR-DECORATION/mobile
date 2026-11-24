@@ -22,6 +22,8 @@ import com.carled.app.data.local.PixelDraft
 import com.carled.app.data.local.PixelDraftStore
 import com.carled.app.domain.model.CustomerOwnedCharacterResponse
 import com.carled.app.presentation.components.*
+import com.carled.app.presentation.screens.upload.DitherMode
+import com.carled.app.presentation.screens.upload.FitMode
 import com.carled.app.presentation.theme.Cream
 
 private enum class LibraryTab { GALLERY, PICTURES }
@@ -125,7 +127,10 @@ private fun PictureGridTab(
                     if (refreshing) {
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
-                        Icon(Icons.Default.Refresh, contentDescription = "Tải lại danh sách Character")
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Tải lại danh sách Character"
+                        )
                     }
                 }
             }
@@ -136,13 +141,18 @@ private fun PictureGridTab(
             when (filter) {
                 PictureFilter.OWNED_CHARACTERS -> {
                     when (val s = ownedCharactersState) {
-                        is Resource.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        is Resource.Loading -> Box(
+                            Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
                             CircularProgressIndicator()
                         }
+
                         is Resource.Error -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(s.message, color = MaterialTheme.colorScheme.error)
                             MirageButton("Thử lại", viewModel::loadOwnedCharacters)
                         }
+
                         is Resource.Success -> {
                             if (s.data.isEmpty()) {
                                 EmptyRow("Bạn chưa sở hữu character nào. Mua trong Store để xem tại đây.")
@@ -155,7 +165,8 @@ private fun PictureGridTab(
                                 ) {
                                     items(s.data, key = { it.characterId }) { character ->
                                         OwnedCharacterCell(character) {
-                                            selectedItem = PictureDetailItem.OwnedCharacter(character)
+                                            selectedItem =
+                                                PictureDetailItem.OwnedCharacter(character)
                                         }
                                     }
                                 }
@@ -163,8 +174,11 @@ private fun PictureGridTab(
                         }
                     }
                 }
+
                 PictureFilter.LOCAL_DRAFTS -> {
-                    val drafts = remember { runCatching { PixelDraftStore(context).drafts() }.getOrDefault(emptyList()) }
+                    val drafts = remember {
+                        runCatching { PixelDraftStore(context).drafts() }.getOrDefault(emptyList())
+                    }
                     if (drafts.isEmpty()) {
                         EmptyRow("Chưa có bản vẽ nào được lưu. Vẽ DIY ở tab Gallery rồi lưu nháp.")
                     } else {
@@ -178,12 +192,21 @@ private fun PictureGridTab(
                                 Column(
                                     Modifier
                                         .flatSurface(color = Cream)
-                                        .clickable { selectedItem = PictureDetailItem.LocalDraft(draft) }
+                                        .clickable {
+                                            selectedItem = PictureDetailItem.LocalDraft(draft)
+                                        }
                                         .padding(8.dp),
                                     verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    PixelPreview(draft.document, Modifier.fillMaxWidth().aspectRatio(1f))
-                                    Text(draft.name, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                    PixelPreview(
+                                        draft.document,
+                                        Modifier.fillMaxWidth().aspectRatio(1f)
+                                    )
+                                    Text(
+                                        draft.name,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                         }
@@ -194,10 +217,22 @@ private fun PictureGridTab(
     }
 
     selectedItem?.let { item ->
-        val quickProjectionStatus by viewModel.quickProjection.collectAsState()
+        val editorState by viewModel.editorState.collectAsState()
+        LaunchedEffect(item) {
+            when (item) {
+                is PictureDetailItem.OwnedCharacter -> viewModel.prepareCharacter(item.character)
+                is PictureDetailItem.LocalDraft -> viewModel.prepareDraft(item.draft)
+            }
+        }
         PictureDetailModal(
             item = item,
-            status = quickProjectionStatus,
+            editorState = editorState,
+            onFitModeChange = viewModel::setFitMode,
+            onDitherChange = { enabled ->
+                viewModel.setDitherMode(if (enabled) DitherMode.FLOYD_STEINBERG else DitherMode.NONE)
+            },
+            onBrightnessChange = viewModel::setBrightness,
+            onContrastChange = viewModel::setContrast,
             onDismiss = {
                 selectedItem = null
                 viewModel.resetQuickProjection()
@@ -215,11 +250,16 @@ private fun PictureGridTab(
 @Composable
 private fun PictureDetailModal(
     item: PictureDetailItem,
-    status: QuickProjectionStatus,
+    editorState: LibraryProjectionEditorState,
+    onFitModeChange: (FitMode) -> Unit,
+    onDitherChange: (Boolean) -> Unit,
+    onBrightnessChange: (Int) -> Unit,
+    onContrastChange: (Int) -> Unit,
     onDismiss: () -> Unit,
     onQuickProjection: () -> Unit
 ) {
-    val busy = status.isBusy
+    val status = editorState.status
+    val busy = status.isBusy || editorState.isPreparing
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
@@ -234,39 +274,85 @@ private fun PictureDetailModal(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (editorState.previewDocument != null) {
+                    PixelPreview(
+                        document = editorState.previewDocument,
+                        modifier = Modifier.fillMaxWidth().aspectRatio(2f)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().aspectRatio(2f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+
                 when (item) {
                     is PictureDetailItem.OwnedCharacter -> {
                         val c = item.character
-                        RemoteThumbnail(
-                            url = c.previewGifUrl,
-                            label = c.characterName,
-                            modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                        )
                         Text("ID: #${c.characterId}", color = MirageMuted, style = MaterialTheme.typography.bodySmall)
-                        Text("Frames: ${c.frameCount} · Delay: ${c.frameDelayMs} ms", style = MaterialTheme.typography.bodyMedium)
-                        c.productName?.takeIf { it.isNotBlank() }?.let {
-                            Text("Product: $it", style = MaterialTheme.typography.bodyMedium)
-                        }
-                        c.purchasedPrice?.let {
-                            Text("Price: $it", style = MaterialTheme.typography.bodyMedium)
-                        }
-                        c.purchasedAt?.takeIf { it.isNotBlank() }?.let {
-                            Text("Purchased: $it", color = MirageMuted, style = MaterialTheme.typography.bodySmall)
-                        }
+                        Text(
+                            "Frames: ${editorState.frameCount.coerceAtLeast(1)} · Delay: ${editorState.frameDelayMs} ms",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                     is PictureDetailItem.LocalDraft -> {
                         val d = item.draft
-                        PixelPreview(
-                            d.document,
-                            Modifier.fillMaxWidth().aspectRatio(d.document.width.toFloat() / d.document.height)
-                        )
                         Text(
-                            "Resolution: ${d.document.width}×${d.document.height}",
+                            "Resolution: ${d.document.width}×${d.document.height} · Frames: ${editorState.frameCount.coerceAtLeast(1)}",
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
+
+                Text("Khung hình", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                FitMode.entries.forEach { mode ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = !busy) { onFitModeChange(mode) },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = editorState.fitMode == mode,
+                            onClick = { onFitModeChange(mode) },
+                            enabled = !busy
+                        )
+                        Text(mode.displayName)
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Dithering · Floyd–Steinberg")
+                    Switch(
+                        checked = editorState.ditherMode != DitherMode.NONE,
+                        onCheckedChange = onDitherChange,
+                        enabled = !busy
+                    )
+                }
+
+                Text("Độ sáng ảnh · ${editorState.brightnessPercent}%")
+                Slider(
+                    value = editorState.brightnessPercent.toFloat(),
+                    onValueChange = { onBrightnessChange(it.toInt()) },
+                    valueRange = 40f..220f,
+                    enabled = !busy && editorState.previewDocument != null
+                )
+
+                Text("Độ tương phản · ${editorState.contrastPercent}%")
+                Slider(
+                    value = editorState.contrastPercent.toFloat(),
+                    onValueChange = { onContrastChange(it.toInt()) },
+                    valueRange = 40f..220f,
+                    enabled = !busy && editorState.previewDocument != null
+                )
 
                 QuickProjectionStatusRow(status)
             }
@@ -276,10 +362,10 @@ private fun PictureDetailModal(
                 QuickProjectionStatus.Success -> MirageButton("Xong", onDismiss, Modifier.fillMaxWidth())
                 is QuickProjectionStatus.Error -> MirageButton("Thử lại", onQuickProjection, Modifier.fillMaxWidth())
                 else -> MirageButton(
-                    text = if (busy) "Đang chiếu…" else "Quick projection",
+                    text = if (status.isBusy) "Đang chiếu…" else "Quick projection",
                     onClick = onQuickProjection,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !busy
+                    enabled = !busy && editorState.previewDocument != null
                 )
             }
         },
