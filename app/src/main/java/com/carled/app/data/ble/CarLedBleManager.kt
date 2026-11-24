@@ -215,6 +215,7 @@ class CarLedBleManager(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
         ) {
+            Log.w(TAG, "connect($macAddress) bỏ qua: chưa có quyền BLUETOOTH_CONNECT")
             _connectionState.value = ConnectionState.Error(
                 "Ứng dụng chưa có quyền Bluetooth (BLUETOOTH_CONNECT). Vui lòng cấp quyền và thử lại."
             )

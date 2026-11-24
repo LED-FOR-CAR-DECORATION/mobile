@@ -1,12 +1,18 @@
 package com.carled.app.presentation.screens.control
 
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.core.content.ContextCompat
+import com.carled.app.data.ble.bleScanPermissions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.carled.app.domain.model.ble.ConnectionState
@@ -79,6 +85,24 @@ fun DeviceInfoScreen(
         if (connectionState !is ConnectionState.Connecting) attemptedMac = null
     }
 
+    // Android 12+ needs BLUETOOTH_CONNECT/SCAN granted at runtime; without them
+    // connect() bails out with an Error state, so ask before dialing the MAC.
+    val context = LocalContext.current
+    val blePermissions = remember { bleScanPermissions() }
+    var connectError by remember { mutableStateOf<String?>(null) }
+    fun startConnect() {
+        connectError = null
+        attemptedMac = macAddress
+        macAddress?.let(connectDevice)
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result.values.all { it }) startConnect()
+        else connectError = "Cần cấp quyền Thiết bị ở gần (Bluetooth) để kết nối với LED."
+    }
+    LaunchedEffect(connectionState) {
+        (connectionState as? ConnectionState.Error)?.let { connectError = it.message }
+    }
+
     var rename by remember { mutableStateOf(false) }
     var draftName by remember(deviceName) { mutableStateOf(deviceName.orEmpty()) }
     var renaming by remember { mutableStateOf(false) }
@@ -149,13 +173,19 @@ fun DeviceInfoScreen(
                         else -> HardButton(
                             text = "Connect to device",
                             onClick = {
-                                attemptedMac = macAddress
-                                macAddress?.let(connectDevice)
+                                val granted = blePermissions.all {
+                                    ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+                                }
+                                if (granted) startConnect() else permissionLauncher.launch(blePermissions)
                             },
                             enabled = macAddress != null,
                             shadowOffset = HardStyle.CardOffset,
                             modifier = Modifier.fillMaxWidth().height(56.dp)
                         )
+                    }
+
+                    if (!connectedToThis && !connectingToThis) {
+                        connectError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                     }
 
                     if (connectedToThis) {
