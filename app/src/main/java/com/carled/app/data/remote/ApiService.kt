@@ -223,10 +223,12 @@ interface ApiService {
         @Header("Authorization") authorization: String,
         @Path("id") id: Long
     ): Response<Unit>
-}
 
     @GET("api/customer/characters/owned")
     suspend fun getOwnedCharacters(
         @Header("Authorization") authorization: String
     ): Response<ApiResponse<List<CustomerOwnedCharacterResponse>>>
+
 }
+
+
