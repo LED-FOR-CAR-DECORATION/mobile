@@ -6,13 +6,19 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.carled.app.core.di.ServiceLocator
 import com.carled.app.domain.model.*
 import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.usecase.ble.BleUseCases
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
-class UploadViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
+class UploadViewModel(
+    private val bleUseCases: BleUseCases,
+    private val httpClient: OkHttpClient = ServiceLocator.plainHttpClient
+) : ViewModel() {
     private val _uiState = MutableStateFlow(UploadUiState())
     val uiState = _uiState.asStateFlow()
     val connection = bleUseCases.getConnectionState()
@@ -43,16 +49,37 @@ class UploadViewModel(private val bleUseCases: BleUseCases) : ViewModel() {
         }
     }
 
-    fun loadMockAsset(context: Context, asset: String) {
+    /**
+     * Loads an owned character's preview GIF from the backend (CustomerOwnedCharacterResponse.previewGifUrl).
+     * Only the first frame is decoded here, same convention as onImageSelected()'s GIF handling —
+     * this manual editor flow (fit/dither/brightness controls, single still frame) is distinct from
+     * "Quick projection" in the Content Library (ContentLibraryViewModel), which sends the full animation.
+     */
+    fun loadRemoteCharacter(context: Context, imageUrl: String) {
         if (original != null) return
         _uiState.update { it.copy(isLoadingImage = true, fitMode = FitMode.CONTAIN) }
         loadJob = viewModelScope.launch {
             try {
-                original = withContext(Dispatchers.IO) { context.assets.open(asset).use { requireNotNull(BitmapFactory.decodeStream(it)) } }
-                _uiState.update { it.copy(isLoadingImage = false, imageNote = "Nội dung mô phỏng: chiếu ảnh mẫu tĩnh. File hoạt ảnh và quyền sở hữu thật sẽ lấy từ BE.") }
+                val bytes = withContext(Dispatchers.IO) {
+                    val request = Request.Builder().url(imageUrl).build()
+                    httpClient.newCall(request).execute().use { response ->
+                        require(response.isSuccessful) { "Không tải được ảnh (lỗi ${response.code})." }
+                        requireNotNull(response.body?.bytes()) { "Phản hồi ảnh trống." }
+                    }
+                }
+                ensureActive()
+                original = withContext(Dispatchers.Default) {
+                    requireNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size)) { "Định dạng ảnh chưa được hỗ trợ" }
+                }
+                _uiState.update {
+                    it.copy(
+                        isLoadingImage = false,
+                        imageNote = "Character: chiếu khung hình đầu tiên. Dùng \"Quick projection\" ở Inventory để chiếu hoạt ảnh đầy đủ."
+                    )
+                }
                 process()
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { _uiState.update { it.copy(isLoadingImage = false, feedbackMessage = "Không đọc được ảnh mẫu Character.") } }
+            catch (e: Exception) { _uiState.update { it.copy(isLoadingImage = false, feedbackMessage = "Không tải được ảnh Character: ${e.message}") } }
         }
     }
 
