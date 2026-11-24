@@ -82,5 +82,5 @@ fun RemoteThumbnail(url: String?, label: String, modifier: Modifier = Modifier) 
                 }
             )
         }
-    }ds
+    }
 }
