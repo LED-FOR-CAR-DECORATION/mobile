@@ -42,6 +42,27 @@ import retrofit2.http.Query
 
 interface ApiService {
 
+    @GET("api/devices/{id}/ota/check")
+    suspend fun checkFirmware(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long,
+        @Query("currentVersion") currentVersion: String?
+    ): Response<ApiResponse<com.carled.app.data.remote.dto.FirmwareCheck>>
+
+    @POST("api/devices/{id}/ota/sessions")
+    suspend fun createFirmwareSession(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long,
+        @Body request: com.carled.app.data.remote.dto.CreateOtaSessionRequest
+    ): Response<ApiResponse<com.carled.app.data.remote.dto.FirmwareSession>>
+
+    @retrofit2.http.PATCH("api/devices/{id}/firmware")
+    suspend fun reportFirmware(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: Long,
+        @Body request: com.carled.app.data.remote.dto.ReportFirmwareRequest
+    ): Response<com.google.gson.JsonObject>
+
     // -------------------------------------------------------------------------
     // Auth
     // -------------------------------------------------------------------------
