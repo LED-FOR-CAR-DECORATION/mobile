@@ -12,11 +12,13 @@ import com.carled.app.data.repository.DeviceClaimRepositoryImpl
 import com.carled.app.data.repository.DeviceRepositoryImpl
 import com.carled.app.data.repository.ProductRepositoryImpl
 import com.carled.app.data.remote.dto.RefreshTokenRequest
+import com.carled.app.data.repository.CharacterRepositoryImpl
 import com.carled.app.data.repository.CommissionPricingRepositoryImpl
 import com.carled.app.data.repository.CommissionRepositoryImpl
 import com.carled.app.data.repository.MediaRepositoryImpl
 import com.carled.app.domain.repository.AuthRepository
 import com.carled.app.domain.repository.BleDeviceRepository
+import com.carled.app.domain.repository.CharacterRepository
 import com.carled.app.domain.repository.CommissionPricingRepository
 import com.carled.app.domain.repository.CommissionRepository
 import com.carled.app.domain.repository.DeviceClaimRepository
@@ -217,6 +219,9 @@ object ServiceLocator {
     }
     val mediaRepository: MediaRepository by lazy {
         MediaRepositoryImpl(requireContext(), apiService, plainHttpClient, deviceAuthHeaderProvider)
+    }
+    val characterRepository: CharacterRepository by lazy {
+        CharacterRepositoryImpl(apiService, deviceAuthHeaderProvider)
     }
 
 

@@ -19,6 +19,7 @@ import com.carled.app.data.remote.dto.ResetPasswordRequest
 import com.carled.app.data.remote.dto.UserProfileResponse
 import com.carled.app.data.remote.dto.VerifyEmailRequest
 import com.carled.app.domain.model.CreateSignedUploadUrlRequest
+import com.carled.app.domain.model.CustomerOwnedCharacterResponse
 import com.carled.app.domain.model.commission.ApproveDeliverableCardResponse
 import com.carled.app.domain.model.commission.CommissionPricingResponse
 import com.carled.app.domain.model.commission.CommissionResponse
@@ -222,4 +223,10 @@ interface ApiService {
         @Header("Authorization") authorization: String,
         @Path("id") id: Long
     ): Response<Unit>
+}
+
+    @GET("api/customer/characters/owned")
+    suspend fun getOwnedCharacters(
+        @Header("Authorization") authorization: String
+    ): Response<ApiResponse<List<CustomerOwnedCharacterResponse>>>
 }

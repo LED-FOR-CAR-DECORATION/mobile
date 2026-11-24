@@ -26,11 +26,11 @@ private enum class NavTab(val label: String, @DrawableRes val icon: Int? = null)
     HOME("Home", R.drawable.ic_home),
     GALLERY("Gallery", R.drawable.ic_gallery),
     DEVICES("My Devices", R.drawable.ic_settings),
-    PROFILE("Profile", R.drawable.ic_profile),
     // No drawable asset yet — drawn with the rough CommissionGlyph below
     // instead of painterResource, same placeholder pattern as the rest
     // of TemporaryIcons.kt.
-    COMMISSION("Commission")
+    COMMISSION("Commission"),
+    PROFILE("Profile", R.drawable.ic_profile)
 }
 
 

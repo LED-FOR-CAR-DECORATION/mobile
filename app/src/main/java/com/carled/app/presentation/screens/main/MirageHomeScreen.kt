@@ -73,8 +73,8 @@ import kotlinx.coroutines.launch
 const val HOME_TAB_HOME = 0
 const val HOME_TAB_LIBRARY = 1
 const val HOME_TAB_CONTROL = 2
-const val HOME_TAB_ACCOUNT = 3
-const val HOME_TAB_COMMISSION = 4
+const val HOME_TAB_COMMISSION = 3
+const val HOME_TAB_ACCOUNT = 4
 
 // MockLetterProfileStore / LetterProfile removed — the Home tab now reads
 // real, cache-backed profiles via MarqueeViewModel.profiles (the same
@@ -88,7 +88,7 @@ fun MirageHomeScreen(
     marquee: MarqueeViewModel?, // NEW — null only before an account id is available
     openScan: () -> Unit, openControl: () -> Unit, openCanvas: (String?) -> Unit,
     openMarquee: () -> Unit, openUpload: () -> Unit, logout: () -> Unit,
-    openEffect: () -> Unit = {}, openCharacter: (String) -> Unit = {},
+    openEffect: () -> Unit = {},
     openEditProfile: () -> Unit = {}, // kept — this is the USER/account "Edit" link below, unrelated to letter profiles
     openClaimDevice: () -> Unit = {},
     openDeviceInfo: (String) -> Unit = {},
@@ -108,7 +108,7 @@ fun MirageHomeScreen(
     val device = connectionState as? ConnectionState.Connected
     val alias = device?.deviceName ?: "CarLED-Ambient"
     var draftName by remember { mutableStateOf(alias) }
-    val titles = listOf("Trang chủ", "Nội dung LED", "Điều khiển", "Tài khoản")
+    val titles = listOf("Trang chủ", "Nội dung LED", "Điều khiển", "Commission", "Tài khoản")
 
     val profilesFlow = remember(marquee) { marquee?.profiles ?: MutableStateFlow(TextProfilesState()).asStateFlow() }
     val profilesState by profilesFlow.collectAsState()
@@ -251,8 +251,8 @@ fun MirageHomeScreen(
                 }
             }
             HOME_TAB_LIBRARY -> {
-                Column(Modifier.padding(padding).fillMaxSize().verticalScroll(remember(tab) { ScrollState(0) }).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    ContentLibrary(user?.id ?: "", openCanvas, openCharacter)
+                Box(Modifier.padding(padding).fillMaxSize().padding(16.dp)) {
+                    ContentLibraryScreen(user?.id ?: "", openCanvas)
                 }
             }
             HOME_TAB_CONTROL -> {

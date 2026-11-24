@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-val stagingApiUrl = "http://10.0.2.2:8080/"
+val stagingApiUrl = "http://172.16.130.64:8080/"
 val releaseApiUrl = providers.gradleProperty("releaseApiUrl").getOrElse(stagingApiUrl).trimEnd('/') + "/"
 
 android {
@@ -90,4 +90,6 @@ dependencies {
     implementation("androidx.camera:camera-view:1.3.4")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.coil-kt:coil-gif:2.7.0")
 }

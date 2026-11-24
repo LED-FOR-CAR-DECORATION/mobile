@@ -15,9 +15,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
+import com.carled.app.core.common.Resource
 import com.carled.app.core.di.ServiceLocator
-import com.carled.app.data.local.MockCharacterInventory
 import com.carled.app.data.local.TextProfileStore
+import com.carled.app.domain.model.CustomerOwnedCharacterResponse
 import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.model.User
 import com.carled.app.presentation.screens.auth.*
@@ -139,18 +140,38 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
             if (account == null) {
                 RouteMessage("Đang tải tài khoản…")
             } else {
-                val characterId = entry.arguments?.getString("id")
-                val character = remember(account.id, characterId) {
-                    MockCharacterInventory().listOwned(account.id).firstOrNull { it.characterId == characterId }
+                val characterIdArg = entry.arguments?.getString("id")
+                // Looks the id up against the real backend inventory (CharacterRepository),
+                // not MockCharacterInventory — the id coming from ContentLibraryScreen is a
+                // real CustomerOwnedCharacterResponse.characterId (Long), which never matched
+                // MockCharacterInventory's hardcoded string ids.
+                var characterState by remember(characterIdArg) {
+                    mutableStateOf<Resource<CustomerOwnedCharacterResponse>>(Resource.Loading)
                 }
-                if (character == null) {
-                    RouteMessage("Không tìm thấy Character trong Inventory.")
-                } else {
-                    val vm: UploadViewModel = viewModel(
-                        entry,
-                        factory = factory { UploadViewModel(ServiceLocator.bleUseCases) }
-                    )
-                    PhotoProjectionScreen(vm, goBack, goScan, character)
+                LaunchedEffect(characterIdArg) {
+                    val characterId = characterIdArg?.toLongOrNull()
+                    characterState = if (characterId == null) {
+                        Resource.Error("ID character không hợp lệ.")
+                    } else {
+                        when (val result = ServiceLocator.characterRepository.getOwnedCharacters()) {
+                            is Resource.Success -> result.data.firstOrNull { it.characterId == characterId }
+                                ?.let { Resource.Success(it) }
+                                ?: Resource.Error("Không tìm thấy Character trong Inventory.")
+                            is Resource.Error -> Resource.Error(result.message)
+                            Resource.Loading -> Resource.Loading
+                        }
+                    }
+                }
+                when (val s = characterState) {
+                    is Resource.Loading -> RouteMessage("Đang tải Character…")
+                    is Resource.Error -> RouteMessage(s.message)
+                    is Resource.Success -> {
+                        val vm: UploadViewModel = viewModel(
+                            entry,
+                            factory = factory { UploadViewModel(ServiceLocator.bleUseCases) }
+                        )
+                        PhotoProjectionScreen(vm, goBack, goScan, s.data)
+                    }
                 }
             }
         }
@@ -239,7 +260,6 @@ private fun HomeRoute(
         openUpload = { navController.navigate(NavRoute.Photo.route) },
         logout = onLogout,
         openEffect = { navController.navigate(NavRoute.Effect.route) },
-        openCharacter = { navController.navigate(NavRoute.Character.create(it)) },
         openClaimDevice = { navController.navigate(NavRoute.ClaimDevice.route) },
         openDeviceInfo = { id -> navController.navigate(NavRoute.DeviceInfo.create(id)) },
         initialTab = initialTab
