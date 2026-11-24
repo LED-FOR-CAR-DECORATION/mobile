@@ -383,6 +383,13 @@ private fun CommissionTimeline(
     onOpenChat: () -> Unit,
     onOpenPayment: (String) -> Unit
 ) {
+    // Reference attachments and delivered previews are private signed URLs that
+    // expire after ~15 min. When any of them 401/403, silently re-fetch the detail
+    // to get fresh URLs — the existing content stays visible during the reload.
+    val onImageExpired = remember(commission.commissionId) {
+        { model.refreshDetail(commission.commissionId) }
+    }
+
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         WindowFrame(
             "Request #${commission.commissionId}",
@@ -416,7 +423,12 @@ private fun CommissionTimeline(
                 Text("Ảnh tham khảo", color = Ink, style = MaterialTheme.typography.labelLarge)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     commission.attachments.take(3).forEach { att ->
-                        RemoteImagePreview(att.imageUrl, att.caption ?: "Reference", Modifier.weight(1f).height(72.dp))
+                        RemoteImagePreview(
+                            att.imageUrl,
+                            att.caption ?: "Reference",
+                            Modifier.weight(1f).height(72.dp),
+                            onExpired = onImageExpired
+                        )
                     }
                 }
             }
@@ -425,7 +437,12 @@ private fun CommissionTimeline(
                 Text("Bản xem trước đã giao", color = Ink, style = MaterialTheme.typography.labelLarge)
                 commission.deliveredPreviews.forEach { preview ->
                     Column(Modifier.fillMaxWidth().background(Cream).border(1.dp, Ink).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        RemoteImagePreview(preview.imageUrl, "Preview v${preview.versionNumber}", Modifier.fillMaxWidth().height(140.dp))
+                        RemoteImagePreview(
+                            preview.imageUrl,
+                            "Preview v${preview.versionNumber}",
+                            Modifier.fillMaxWidth().height(140.dp),
+                            onExpired = onImageExpired
+                        )
                         Text("v${preview.versionNumber} · ${preview.status}", color = Ink, fontWeight = FontWeight.Bold)
                         preview.designerNote?.let { Text(it, color = Ink, style = MaterialTheme.typography.bodySmall) }
                         if (preview.status == "STAFF_APPROVED") {
@@ -527,6 +544,12 @@ private fun CommissionConversation(commissionId: Long, model: CommissionViewMode
     val detailState by model.detail.collectAsState()
     val commissionStatus = (detailState[commissionId] as? Resource.Success)?.data?.status
 
+    // Chat images (IMAGE messages, DELIVERABLE_CARD previews) are private signed
+    // URLs. On 401/403 this lambda triggers a silent refreshMessages so Compose
+    // re-renders with fresh URLs. The stable remember key means multiple expired
+    // images in the same conversation only produce one lambda instance.
+    val onImageExpired = remember(commissionId) { { model.refreshMessages(commissionId) } }
+
     DisposableEffect(commissionId) {
         model.loadMessages(commissionId)
         model.loadDetail(commissionId) // needed so action cards can gate on the live status, not just their own metadataJson
@@ -585,13 +608,21 @@ private fun CommissionConversation(commissionId: Long, model: CommissionViewMode
             when (val state = messagesState[commissionId]) {
                 is Resource.Loading -> CircularProgressIndicator(color = Ink)
                 is Resource.Error -> Text(state.message, color = Ink)
-                else -> messages.forEach { message -> MessageBubble(commissionId, message, model, commissionStatus) }
+                else -> messages.forEach { message ->
+                    MessageBubble(commissionId, message, model, commissionStatus, onImageExpired)
+                }
             }
         }
     }
 }
 @Composable
-private fun MessageBubble(commissionId: Long, message: CommissionMessageResponse, model: CommissionViewModel, commissionStatus: String?) {
+private fun MessageBubble(
+    commissionId: Long,
+    message: CommissionMessageResponse,
+    model: CommissionViewModel,
+    commissionStatus: String?,
+    onImageExpired: () -> Unit
+) {
     val outgoing = message.senderRole == "CUSTOMER"
     val actionable = commissionStatus == "PREVIEW_DELIVERED"
     Row(
@@ -609,7 +640,9 @@ private fun MessageBubble(commissionId: Long, message: CommissionMessageResponse
                 "DELIVERABLE_CARD" -> {
                     Text("Bản xem trước đã sẵn sàng", color = Ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                     message.content?.let { Text(it, color = Ink) }
-                    message.mediaUrl?.let { url -> RemoteImagePreview(url, "Deliverable preview", Modifier.size(158.dp, 90.dp)) }
+                    message.mediaUrl?.let { url ->
+                        RemoteImagePreview(url, "Deliverable preview", Modifier.size(158.dp, 90.dp), onExpired = onImageExpired)
+                    }
                     if (actionable) {
                         MirageButton("Duyệt bản xem trước", { model.approveDeliverable(commissionId) }, Modifier.fillMaxWidth())
                     } else {
@@ -634,7 +667,9 @@ private fun MessageBubble(commissionId: Long, message: CommissionMessageResponse
                 "SYSTEM" -> Text(message.content.orEmpty(), color = Ink, style = MaterialTheme.typography.bodySmall)
                 else -> {
                     message.content?.takeIf { it.isNotBlank() }?.let { Text(it, color = Ink) }
-                    message.mediaUrl?.let { url -> RemoteImagePreview(url, "Attached image", Modifier.size(158.dp, 90.dp)) }
+                    message.mediaUrl?.let { url ->
+                        RemoteImagePreview(url, "Attached image", Modifier.size(158.dp, 90.dp), onExpired = onImageExpired)
+                    }
                 }
             }
         }
@@ -680,20 +715,45 @@ private sealed class RemotePreviewState {
     object Loading : RemotePreviewState()
     data class Loaded(val bitmap: ImageBitmap) : RemotePreviewState()
     object Failed : RemotePreviewState()
+    // Distinct from Failed so the UI can show "retrying…" instead of a permanent error.
+    object Expired : RemotePreviewState()
 }
 
+/**
+ * Fetches and renders a remote image. For private commission/warranty media the
+ * backend issues signed URLs that expire after ~15 min. When the URL returns
+ * HTTP 401 or 403 this composable moves to the [RemotePreviewState.Expired] state
+ * and fires [onExpired] so the caller can re-fetch the parent record (commission
+ * detail or messages) and get a fresh signed URL. All other failures (network
+ * errors, 404, decode failures) land on [RemotePreviewState.Failed] and show the
+ * broken-image placeholder without triggering a refetch.
+ */
 @Composable
-private fun RemoteImagePreview(url: String, label: String, modifier: Modifier) {
+private fun RemoteImagePreview(
+    url: String?,
+    label: String,
+    modifier: Modifier,
+    onExpired: (() -> Unit)? = null
+) {
+    val currentOnExpired by rememberUpdatedState(onExpired)
     val state by produceState<RemotePreviewState>(RemotePreviewState.Loading, url) {
         value = withContext(Dispatchers.IO) {
+            if (url.isNullOrBlank()) {
+                android.util.Log.w("RemoteImagePreview", "Skipped fetch: null/blank url for $label")
+                return@withContext RemotePreviewState.Failed
+            }
             try {
                 val request = Request.Builder().url(url).build()
                 ServiceLocator.plainHttpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         android.util.Log.e("RemoteImagePreview", "Fetch failed: HTTP ${response.code} for $url")
+                        if (response.code == 401 || response.code == 403) {
+                            currentOnExpired?.invoke()
+                        }
                         return@use RemotePreviewState.Failed
                     }
-                    val bitmap = response.body?.byteStream()?.let { BitmapFactory.decodeStream(it) }
+                    val bytes = response.body?.bytes()
+                    val bitmap = bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
                     if (bitmap != null) RemotePreviewState.Loaded(bitmap.asImageBitmap())
                     else {
                         android.util.Log.e("RemoteImagePreview", "Decode returned null for $url")
@@ -708,6 +768,9 @@ private fun RemoteImagePreview(url: String, label: String, modifier: Modifier) {
     }
     when (val s = state) {
         is RemotePreviewState.Loading -> Box(modifier, contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = Ink, modifier = Modifier.size(20.dp))
+        }
+        is RemotePreviewState.Expired -> Box(modifier, contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = Ink, modifier = Modifier.size(20.dp))
         }
         is RemotePreviewState.Failed -> Box(modifier, contentAlignment = Alignment.Center) {

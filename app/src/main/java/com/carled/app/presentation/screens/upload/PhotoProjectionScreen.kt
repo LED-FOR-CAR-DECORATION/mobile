@@ -11,23 +11,29 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.carled.app.domain.model.CustomerOwnedCharacterResponse
 import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.presentation.components.*
 
 @Composable
-fun PhotoProjectionScreen(vm: UploadViewModel, back: () -> Unit, scan: () -> Unit, character: com.carled.app.data.local.OwnedCharacter? = null) {
+fun PhotoProjectionScreen(
+    vm: UploadViewModel,
+    back: () -> Unit,
+    scan: () -> Unit,
+    character: CustomerOwnedCharacterResponse? = null
+) {
     val state by vm.uiState.collectAsState()
     val connection by vm.connection.collectAsState()
     val context = LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { vm.onImageSelected(context, it) } }
-    LaunchedEffect(character?.characterId) { character?.let { vm.loadMockAsset(context, it.asset) } }
+    LaunchedEffect(character?.characterId) { character?.let { vm.loadRemoteCharacter(context, it.previewGifUrl) } }
     BackHandler(state.isUploading) { }
     val editable = !state.isUploading && !state.isLoadingImage
-    Scaffold(topBar = { MirageBar(character?.name ?: "Chiếu ảnh", { if (!state.isUploading) back() }) }, containerColor = MirageBackground) { padding ->
+    Scaffold(topBar = { MirageBar(character?.characterName ?: "Chiếu ảnh", { if (!state.isUploading) back() }) }, containerColor = MirageBackground) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(if (character == null) "Ảnh từ điện thoại → LED" else "Inventory · Character đã mua", style = MaterialTheme.typography.headlineSmall)
             if (character == null) MirageButton(if (state.previewDocument == null) "Chọn ảnh từ điện thoại" else "Đổi ảnh", { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, Modifier.fillMaxWidth(), enabled = editable)
-            else Text("Dữ liệu mẫu · ${character.entitlementId} · ${character.sourceType}", color = MirageMuted)
+            else Text("ID: #${character.characterId} · ${character.frameCount} khung hình · ${character.frameDelayMs} ms/khung", color = MirageMuted)
             MirageCard {
                 Text("Xem trước LED · 64×32", style = MaterialTheme.typography.titleMedium)
                 if (state.previewDocument != null) PixelPreview(state.previewDocument, Modifier.fillMaxWidth().aspectRatio(2f))

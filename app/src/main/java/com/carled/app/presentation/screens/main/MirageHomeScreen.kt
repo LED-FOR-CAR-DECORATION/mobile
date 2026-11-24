@@ -88,7 +88,7 @@ fun MirageHomeScreen(
     marquee: MarqueeViewModel?, // NEW — null only before an account id is available
     openScan: () -> Unit, openControl: () -> Unit, openCanvas: (String?) -> Unit,
     openMarquee: () -> Unit, openUpload: () -> Unit, logout: () -> Unit,
-    openEffect: () -> Unit = {}, openCharacter: (String) -> Unit = {},
+    openEffect: () -> Unit = {},
     openEditProfile: () -> Unit = {}, // kept — this is the USER/account "Edit" link below, unrelated to letter profiles
     openClaimDevice: () -> Unit = {},
     openDeviceInfo: (String) -> Unit = {},
@@ -252,7 +252,7 @@ fun MirageHomeScreen(
             }
             HOME_TAB_LIBRARY -> {
                 Box(Modifier.padding(padding).fillMaxSize().padding(16.dp)) {
-                    ContentLibraryScreen(user?.id ?: "", openCanvas, openCharacter)
+                    ContentLibraryScreen(user?.id ?: "", openCanvas)
                 }
             }
             HOME_TAB_CONTROL -> {

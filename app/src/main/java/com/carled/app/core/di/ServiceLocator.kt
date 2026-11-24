@@ -125,7 +125,14 @@ object ServiceLocator {
                 HttpLoggingInterceptor.Level.NONE
         }
         OkHttpClient.Builder()
-            .addInterceptor(logging)
+            .addInterceptor { chain ->
+                // OTA session responses contain a download capability.
+                if (chain.request().url.encodedPath.endsWith("/ota/sessions")) {
+                    chain.proceed(chain.request())
+                } else {
+                    logging.intercept(chain)
+                }
+            }
             .authenticator(tokenAuthenticator)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -183,6 +190,17 @@ object ServiceLocator {
             userPreferences    = userPreferences,
             gson               = gson,
             authHeaderProvider = deviceAuthHeaderProvider
+        )
+    }
+
+    val firmwareBleClient by lazy {
+        com.carled.app.data.ble.FirmwareBleClient(bleManager)
+    }
+
+    val firmwareRepository by lazy {
+        com.carled.app.data.repository.FirmwareRepository(
+            apiService, userPreferences,
+            requireContext().getSharedPreferences("firmware_ota", Context.MODE_PRIVATE), gson
         )
     }
 

@@ -75,7 +75,8 @@ class MirageNavigationTest {
     }
     @Test fun ledControlOnlyContainsPowerAndBrightness() {
         val vm = com.carled.app.presentation.screens.control.ControlViewModel(ServiceLocator.bleUseCases)
-        compose.setContent { CarLedTheme { com.carled.app.presentation.screens.control.MirageControlScreen(vm, {}, {}) } }
+        val devices = com.carled.app.presentation.screens.control.OwnedDevicesViewModel(ServiceLocator.deviceRepository)
+        compose.setContent { CarLedTheme { com.carled.app.presentation.screens.control.MirageControlScreen(vm, devices, {}, {}) } }
         compose.onNodeWithTag("ledPower").assertIsDisplayed()
         compose.onNodeWithTag("ledBrightness").assertIsDisplayed()
         compose.onNodeWithText("Chế độ hiển thị").assertDoesNotExist()

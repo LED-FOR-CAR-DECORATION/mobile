@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,7 +36,7 @@ private sealed interface PictureDetailItem {
 }
 
 @Composable
-fun ContentLibraryScreen(userId: String, openCanvas: (String?) -> Unit, openCharacter: (String) -> Unit) {
+fun ContentLibraryScreen(userId: String, openCanvas: (String?) -> Unit) {
     var tab by remember { mutableStateOf(LibraryTab.GALLERY) }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -47,7 +49,10 @@ fun ContentLibraryScreen(userId: String, openCanvas: (String?) -> Unit, openChar
 
         when (tab) {
             LibraryTab.GALLERY -> GalleryTab(openCanvas, Modifier.weight(1f))
-            LibraryTab.PICTURES -> PictureGridTab(userId, openCanvas, openCharacter, Modifier.weight(1f))
+            // Quick projection now sends the character's GIF straight to the LED
+            // inline (ContentLibraryViewModel), so this tab no longer navigates
+            // anywhere and takes no openCharacter callback.
+            LibraryTab.PICTURES -> PictureGridTab(userId, openCanvas, Modifier.weight(1f))
         }
     }
 }
@@ -89,16 +94,20 @@ private fun GalleryTab(openCanvas: (String?) -> Unit, modifier: Modifier = Modif
 private fun PictureGridTab(
     userId: String,
     openCanvas: (String?) -> Unit,
-    openCharacter: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val viewModel: ContentLibraryViewModel = viewModel(key = "contentLibrary:$userId")
     var filter by remember { mutableStateOf(PictureFilter.OWNED_CHARACTERS) }
     var selectedItem by remember { mutableStateOf<PictureDetailItem?>(null) }
+    val ownedCharactersState by viewModel.ownedCharacters.collectAsState()
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             PictureFilter.entries.forEach { option ->
                 FilterChip(
                     selected = filter == option,
@@ -106,14 +115,27 @@ private fun PictureGridTab(
                     label = { Text(option.label) }
                 )
             }
+            if (filter == PictureFilter.OWNED_CHARACTERS) {
+                Spacer(Modifier.weight(1f))
+                val refreshing = ownedCharactersState is Resource.Loading
+                // Re-fetches the owned-character list from the backend so an
+                // item added by a purchase elsewhere, while this screen was
+                // already open, shows up without leaving and reopening the tab.
+                IconButton(onClick = viewModel::loadOwnedCharacters, enabled = !refreshing) {
+                    if (refreshing) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.Refresh, contentDescription = "Tải lại danh sách Character")
+                    }
+                }
+            }
         }
         Spacer(Modifier.height(8.dp))
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when (filter) {
                 PictureFilter.OWNED_CHARACTERS -> {
-                    val state by viewModel.ownedCharacters.collectAsState()
-                    when (val s = state) {
+                    when (val s = ownedCharactersState) {
                         is Resource.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator()
                         }
@@ -172,14 +194,18 @@ private fun PictureGridTab(
     }
 
     selectedItem?.let { item ->
+        val quickProjectionStatus by viewModel.quickProjection.collectAsState()
         PictureDetailModal(
             item = item,
-            onDismiss = { selectedItem = null },
-            onQuickProjection = {
+            status = quickProjectionStatus,
+            onDismiss = {
                 selectedItem = null
+                viewModel.resetQuickProjection()
+            },
+            onQuickProjection = {
                 when (item) {
-                    is PictureDetailItem.OwnedCharacter -> openCharacter(item.character.characterId.toString())
-                    is PictureDetailItem.LocalDraft -> openCanvas(item.draft.id)
+                    is PictureDetailItem.OwnedCharacter -> viewModel.quickProjectCharacter(item.character)
+                    is PictureDetailItem.LocalDraft -> viewModel.quickProjectDraft(item.draft)
                 }
             }
         )
@@ -189,11 +215,14 @@ private fun PictureGridTab(
 @Composable
 private fun PictureDetailModal(
     item: PictureDetailItem,
+    status: QuickProjectionStatus,
     onDismiss: () -> Unit,
     onQuickProjection: () -> Unit
 ) {
+    val busy = status.isBusy
+
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
         title = {
             Text(
                 text = when (item) {
@@ -238,21 +267,56 @@ private fun PictureDetailModal(
                         )
                     }
                 }
+
+                QuickProjectionStatusRow(status)
             }
         },
         confirmButton = {
-            MirageButton(
-                text = "Quick projection",
-                onClick = onQuickProjection,
-                modifier = Modifier.fillMaxWidth()
-            )
+            when (status) {
+                QuickProjectionStatus.Success -> MirageButton("Xong", onDismiss, Modifier.fillMaxWidth())
+                is QuickProjectionStatus.Error -> MirageButton("Thử lại", onQuickProjection, Modifier.fillMaxWidth())
+                else -> MirageButton(
+                    text = if (busy) "Đang chiếu…" else "Quick projection",
+                    onClick = onQuickProjection,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !busy
+                )
+            }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !busy) {
                 Text("Close")
             }
         }
     )
+}
+
+@Composable
+private fun QuickProjectionStatusRow(status: QuickProjectionStatus) {
+    val label = when (status) {
+        QuickProjectionStatus.Idle -> null
+        QuickProjectionStatus.Connecting -> "Đang kiểm tra kết nối LED…"
+        QuickProjectionStatus.Downloading -> "Đang tải ảnh động…"
+        QuickProjectionStatus.Decoding -> "Đang xử lý khung hình…"
+        QuickProjectionStatus.Sending -> "Đang gửi lên LED…"
+        QuickProjectionStatus.WaitingAck -> "Đang chờ LED xác nhận…"
+        QuickProjectionStatus.Success -> "LED đã xác nhận chiếu thành công!"
+        is QuickProjectionStatus.Error -> status.message
+    } ?: return
+
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (status.isBusy) {
+            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        }
+        Text(
+            label,
+            color = when (status) {
+                is QuickProjectionStatus.Error -> MaterialTheme.colorScheme.error
+                QuickProjectionStatus.Success -> MaterialTheme.colorScheme.primary
+                else -> MirageMuted
+            }
+        )
+    }
 }
 
 @Composable

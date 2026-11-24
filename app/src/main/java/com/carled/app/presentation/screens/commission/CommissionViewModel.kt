@@ -201,6 +201,28 @@ internal class CommissionViewModel(
         }
     }
 
+    /**
+     * Re-fetches commission detail without flashing a Loading state. Called when a
+     * signed URL for a reference attachment or delivered preview returns 401/403
+     * (expired after ~15 min). The existing Success data stays visible until fresh
+     * data arrives, at which point Compose re-renders with new signed URLs.
+     */
+    fun refreshDetail(id: Long) {
+        viewModelScope.launch {
+            _detail.update { it + (id to repository.getCommissionDetail(id)) }
+        }
+    }
+
+    /**
+     * Re-fetches messages without flashing a Loading state. Called when a signed URL
+     * for a chat image (IMAGE message or DELIVERABLE_CARD) returns 401/403.
+     */
+    fun refreshMessages(id: Long) {
+        viewModelScope.launch {
+            _messages.update { it + (id to repository.getMessages(id)) }
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Chat — REST history (GET/POST .../messages) + live updates over STOMP.
     // Our own sent message is appended from the REST response immediately;
@@ -253,11 +275,12 @@ internal class CommissionViewModel(
         }
     }
 
-    private fun appendMessage(id: Long, message: CommissionMessageResponse) {
+    private fun appendMessage(id: Long, message: CommissionMessageResponse?) {
+        val msg = message ?: return
         _messages.update { current ->
             val existing = (current[id] as? Resource.Success)?.data.orEmpty()
-            if (existing.any { it.messageId == message.messageId }) current
-            else current + (id to Resource.Success(existing + message))
+            if (existing.any { it.messageId == msg.messageId }) current
+            else current + (id to Resource.Success(existing + msg))
         }
     }
 
@@ -287,6 +310,7 @@ internal class CommissionViewModel(
                 is Resource.Success -> {
                     _actionResult.value = Resource.Success(Unit)
                     appendMessage(id, result.data.systemMessage)
+                    loadMessages(id)
                     loadDetail(id)
                     loadCommissions()
                 }

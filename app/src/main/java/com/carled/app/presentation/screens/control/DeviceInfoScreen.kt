@@ -16,7 +16,10 @@ import com.carled.app.data.ble.bleScanPermissions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.carled.app.domain.model.ble.ConnectionState
-import com.carled.app.domain.model.device.MockDeviceInventory
+import com.carled.app.core.di.ServiceLocator
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.carled.app.domain.model.device.isValidDeviceName
 import com.carled.app.presentation.components.*
 import com.carled.app.presentation.theme.*
@@ -56,6 +59,25 @@ fun DeviceInfoScreen(
 
     val connectedDevice = connectionState as? ConnectionState.Connected
     val connectedToThis = macAddress != null && connectedDevice?.deviceAddress == macAddress
+
+    val firmwareVm = if (deviceIdLong != null && macAddress != null) {
+        viewModel<FirmwareUpdateViewModel>(
+            key = "firmware-$deviceIdLong-$macAddress",
+            factory = viewModelFactory {
+                initializer {
+                    FirmwareUpdateViewModel(deviceIdLong, macAddress, ServiceLocator.firmwareRepository, ServiceLocator.firmwareBleClient)
+                }
+            }
+        )
+    } else null
+    val firmwareState = firmwareVm?.state?.collectAsState()?.value
+    val firmwareActive = firmwareState?.working == true
+    LaunchedEffect(firmwareState?.completed) {
+        if (firmwareState?.completed == true && deviceIdLong != null) {
+            ownedDevices.loadDeviceDetail(deviceIdLong)
+            ownedDevices.refresh()
+        }
+    }
 
     var attemptedMac by remember { mutableStateOf<String?>(null) }
     val connectingToThis = connectionState is ConnectionState.Connecting && attemptedMac == macAddress
@@ -135,6 +157,7 @@ fun DeviceInfoScreen(
                     when {
                         connectedToThis -> HardButton(
                             text = "Ngắt kết nối",
+                            enabled = !firmwareActive,
                             onClick = disconnectDevice,
                             filled = false,
                             shadowOffset = HardStyle.CardOffset,
@@ -176,8 +199,8 @@ fun DeviceInfoScreen(
                     }
                 }
 
-                DeviceSection(title = "Firmware versions") {
-                    remember { MockDeviceInventory.firmwareReleases() }.forEach { release -> FirmwareReleaseCard(release) }
+                DeviceSection(title = "Firmware") {
+                    firmwareVm?.let { FirmwareUpdateSection(it, connectedToThis) }
                 }
 
                 DeviceSection(title = "Device info") {

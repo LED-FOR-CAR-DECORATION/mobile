@@ -59,6 +59,7 @@ class CarLedBleManager(private val context: Context) {
 
     private var bluetoothGatt: BluetoothGatt? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
+    private val telemetryAssembler = TelemetryJsonAssembler()
 
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState = _connectionState.asStateFlow()
@@ -326,9 +327,8 @@ class CarLedBleManager(private val context: Context) {
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic
         ) {
-            val telemetryJson = String(characteristic.value, Charsets.UTF_8)
-            Log.d(TAG, "Nhận Telemetry từ LED ESP32: $telemetryJson")
-            dispatchTelemetry(telemetryJson)
+            if (bluetoothGatt !== gatt) return
+            telemetryAssembler.accept(characteristic.value).forEach(::dispatchTelemetry)
         }
     }
 
@@ -345,6 +345,16 @@ class CarLedBleManager(private val context: Context) {
             if (obj.has("event")) {
                 // ── Event packet ──
                 val event = when (val eventName = obj.optString("event")) {
+                    "ota_info" -> TelemetryEvent.OtaInfo(
+                        obj.optString("request_id"), obj.optString("device_id"),
+                        obj.optString("version"), obj.optString("nonce"),
+                        obj.optBoolean("wifi"), obj.optBoolean("busy"),
+                        obj.optBoolean("healthy"), obj.optBoolean("configured", true)
+                    )
+                    "ota_status" -> TelemetryEvent.OtaStatus(
+                        obj.optString("request_id"), obj.optString("state"),
+                        obj.optInt("progress").coerceIn(0, 100), obj.optString("error")
+                    )
                     "device_name" -> {
                         val name = obj.optString("name")
                         val connected = _connectionState.value as? ConnectionState.Connected
@@ -471,6 +481,7 @@ class CarLedBleManager(private val context: Context) {
     }
 
     private fun cleanupGatt() {
+        telemetryAssembler.reset()
         bluetoothGatt?.let {
             try {
                 it.disconnect()
