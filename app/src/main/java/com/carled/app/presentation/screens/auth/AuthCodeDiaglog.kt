@@ -27,7 +27,9 @@ fun AuthCodeDialog(
     onSignUp: () -> Unit,
     onDismiss: () -> Unit,
     loading: Boolean = false,
-    error: String? = null
+    error: String? = null,
+    confirmLabel: String = "Sign up",
+    loadingLabel: String = "Đang xác thực…"
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         WindowFrame(
@@ -67,7 +69,7 @@ fun AuthCodeDialog(
             )
 
             HardButton(
-                text = if (loading) "Đang xác thực…" else "Sign up",
+                text = if (loading) loadingLabel else confirmLabel,
                 onClick = onSignUp,
                 enabled = code.isNotBlank() && !loading,
                 loading = loading,

@@ -25,12 +25,14 @@ import com.carled.app.domain.repository.DeviceClaimRepository
 import com.carled.app.domain.repository.DeviceRepository
 import com.carled.app.domain.repository.MediaRepository
 import com.carled.app.domain.repository.ProductRepository
+import com.carled.app.domain.usecase.auth.ForgotPasswordUseCase
 import com.carled.app.domain.usecase.auth.GoogleAuthUseCase
 import com.carled.app.domain.usecase.ble.*
 import com.carled.app.domain.usecase.auth.LoginUseCase
 import com.carled.app.domain.usecase.auth.LogoutUseCase
 import com.carled.app.domain.usecase.auth.RegisterUseCase
 import com.carled.app.domain.usecase.auth.ResendVerificationUseCase
+import com.carled.app.domain.usecase.auth.ResetPasswordUseCase
 import com.carled.app.domain.usecase.auth.VerifyEmailUseCase
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
@@ -263,6 +265,8 @@ object ServiceLocator {
     val verifyEmailUseCase: VerifyEmailUseCase by lazy { VerifyEmailUseCase(authRepository) }
     val resendVerificationUseCase: ResendVerificationUseCase by lazy { ResendVerificationUseCase(authRepository) }
     val googleAuthUseCase: GoogleAuthUseCase by lazy { GoogleAuthUseCase(authRepository) }
+    val forgotPasswordUseCase: ForgotPasswordUseCase by lazy { ForgotPasswordUseCase(authRepository) }
+    val resetPasswordUseCase: ResetPasswordUseCase by lazy { ResetPasswordUseCase(authRepository) }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

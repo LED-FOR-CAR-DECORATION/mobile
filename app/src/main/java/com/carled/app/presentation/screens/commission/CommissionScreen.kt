@@ -1,7 +1,15 @@
 package com.carled.app.presentation.screens.commission
 
+import android.content.ContentResolver
+import android.content.ContentValues
+import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.PickVisualMediaRequest
@@ -30,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -55,6 +64,7 @@ import com.carled.app.presentation.theme.GreenLight
 import com.carled.app.presentation.theme.Ink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.text.NumberFormat
@@ -64,6 +74,16 @@ import okhttp3.Request
 
 private const val MAX_REFERENCES = 5
 private val CardShape = RoundedCornerShape(3.dp)
+
+/**
+ * One shared aspect ratio for every image preview slot (reference pickers,
+ * attachment thumbnails, delivered previews, chat bubble images) so the whole
+ * screen reads as one consistent grid instead of a mix of ad-hoc box shapes.
+ * Paired with ContentScale.Fit (see LocalImagePreview/RemoteImagePreview)
+ * so the full image is always visible — any mismatch between this ratio and
+ * the source image's own ratio is letterboxed, never cropped away.
+ */
+private val ImagePreviewAspectRatio = 4f / 3f
 private fun formatVnd(amount: Double) =
     NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN")).format(amount) + " VND"
 private val ImagePickerRequest = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -269,7 +289,7 @@ private fun CommissionForm(user: User, model: CommissionViewModel, onSubmit: (Lo
                             List(minOf(3, MAX_REFERENCES - draft.references.size)) { null }).chunked(3).forEach { row ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             row.forEach { uri ->
-                                val slot = Modifier.weight(1f).height(72.dp).background(Cream).border(1.dp, Ink)
+                                val slot = Modifier.weight(1f).aspectRatio(ImagePreviewAspectRatio).background(Cream).border(1.dp, Ink)
                                 if (uri == null) {
                                     Box(
                                         slot.clickable(role = Role.Button) { picker.launch(ImagePickerRequest) },
@@ -426,7 +446,7 @@ private fun CommissionTimeline(
                         RemoteImagePreview(
                             att.imageUrl,
                             att.caption ?: "Reference",
-                            Modifier.weight(1f).height(72.dp),
+                            Modifier.weight(1f).aspectRatio(ImagePreviewAspectRatio),
                             onExpired = onImageExpired
                         )
                     }
@@ -440,7 +460,7 @@ private fun CommissionTimeline(
                         RemoteImagePreview(
                             preview.imageUrl,
                             "Preview v${preview.versionNumber}",
-                            Modifier.fillMaxWidth().height(140.dp),
+                            Modifier.fillMaxWidth().aspectRatio(ImagePreviewAspectRatio),
                             onExpired = onImageExpired
                         )
                         Text("v${preview.versionNumber} · ${preview.status}", color = Ink, fontWeight = FontWeight.Bold)
@@ -641,7 +661,7 @@ private fun MessageBubble(
                     Text("Bản xem trước đã sẵn sàng", color = Ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                     message.content?.let { Text(it, color = Ink) }
                     message.mediaUrl?.let { url ->
-                        RemoteImagePreview(url, "Deliverable preview", Modifier.size(158.dp, 90.dp), onExpired = onImageExpired)
+                        RemoteImagePreview(url, "Deliverable preview", Modifier.width(180.dp).aspectRatio(ImagePreviewAspectRatio), onExpired = onImageExpired)
                     }
                     if (actionable) {
                         MirageButton("Duyệt bản xem trước", { model.approveDeliverable(commissionId) }, Modifier.fillMaxWidth())
@@ -668,7 +688,7 @@ private fun MessageBubble(
                 else -> {
                     message.content?.takeIf { it.isNotBlank() }?.let { Text(it, color = Ink) }
                     message.mediaUrl?.let { url ->
-                        RemoteImagePreview(url, "Attached image", Modifier.size(158.dp, 90.dp), onExpired = onImageExpired)
+                        RemoteImagePreview(url, "Attached image", Modifier.width(180.dp).aspectRatio(ImagePreviewAspectRatio), onExpired = onImageExpired)
                     }
                 }
             }
@@ -681,33 +701,54 @@ private fun MessageAvatar(color: Color, modifier: Modifier) {
     Box(modifier.size(24.dp).background(color, CircleShape).border(1.dp, Ink, CircleShape))
 }
 
+/**
+ * Decodes [uri] via [BitmapFactory] with inSampleSize downsampling so the
+ * result's longest edge is near [maxDimension] — avoids loading a full
+ * multi-megapixel photo into memory just to show a small thumbnail. Shared by
+ * [LocalImagePreview] (thumbnail, small cap) and [EnlargedImageDialog]
+ * (enlarge view, larger cap so it isn't just a blown-up blurry thumbnail).
+ */
+private fun decodeDownsampled(resolver: ContentResolver, uri: Uri, maxDimension: Int): ImageBitmap? = try {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+    val options = BitmapFactory.Options()
+    while (maxOf(bounds.outWidth, bounds.outHeight) / options.inSampleSize.coerceAtLeast(1) > maxDimension) {
+        options.inSampleSize = options.inSampleSize.coerceAtLeast(1) * 2
+    }
+    resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options)?.asImageBitmap() }
+} catch (_: IOException) {
+    null
+} catch (_: SecurityException) {
+    null
+}
+
 @Composable
 private fun LocalImagePreview(uri: Uri, label: String, modifier: Modifier) {
     val resolver = LocalContext.current.contentResolver
     val bitmap by produceState<ImageBitmap?>(null, uri) {
-        value = withContext(Dispatchers.IO) {
-            try {
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-                val options = BitmapFactory.Options()
-                while (maxOf(bounds.outWidth, bounds.outHeight) / options.inSampleSize.coerceAtLeast(1) > 512) {
-                    options.inSampleSize = options.inSampleSize.coerceAtLeast(1) * 2
-                }
-                resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options)?.asImageBitmap() }
-            } catch (_: IOException) {
-                null
-            } catch (_: SecurityException) {
-                null
-            }
-        }
+        value = withContext(Dispatchers.IO) { decodeDownsampled(resolver, uri, maxDimension = 512) }
     }
     val preview = bitmap
+    var enlarged by remember { mutableStateOf(false) }
     if (preview == null) {
         Box(modifier, contentAlignment = Alignment.Center) {
             Icon(Icons.Default.AddPhotoAlternate, label, tint = Ink)
         }
     } else {
-        Image(preview, label, modifier.clip(CardShape), contentScale = ContentScale.Crop)
+        // Fit (not Crop) so the whole image is always visible; the background
+        // shows through as a letterbox fill whenever the image's own aspect
+        // ratio doesn't exactly match the slot's. Clickable to open the
+        // full-size enlarge dialog.
+        Image(
+            preview, label,
+            modifier.clip(CardShape).background(Cream).clickable(onClickLabel = "Xem ảnh lớn") { enlarged = true },
+            contentScale = ContentScale.Fit
+        )
+    }
+    if (enlarged) {
+        // Re-decode at a higher cap rather than reusing the 512px thumbnail
+        // above — enlarging that would just blow up a blurry small bitmap.
+        EnlargedImageDialog(EnlargeSource.Local(uri), label) { enlarged = false }
     }
 }
 
@@ -736,6 +777,7 @@ private fun RemoteImagePreview(
     onExpired: (() -> Unit)? = null
 ) {
     val currentOnExpired by rememberUpdatedState(onExpired)
+    var enlarged by remember { mutableStateOf(false) }
     val state by produceState<RemotePreviewState>(RemotePreviewState.Loading, url) {
         value = withContext(Dispatchers.IO) {
             if (url.isNullOrBlank()) {
@@ -776,6 +818,138 @@ private fun RemoteImagePreview(
         is RemotePreviewState.Failed -> Box(modifier, contentAlignment = Alignment.Center) {
             Icon(Icons.Default.AddPhotoAlternate, "$label (không tải được)", tint = Ink)
         }
-        is RemotePreviewState.Loaded -> Image(s.bitmap, label, modifier.clip(CardShape), contentScale = ContentScale.Crop)
+        // Fit (not Crop) so the whole image is always visible; the background
+        // shows through as a letterbox fill whenever the image's own aspect
+        // ratio doesn't exactly match the slot's. Clickable to open the
+        // full-size enlarge dialog.
+        is RemotePreviewState.Loaded -> Image(
+            s.bitmap, label,
+            modifier.clip(CardShape).background(Cream).clickable(onClickLabel = "Xem ảnh lớn") { enlarged = true },
+            contentScale = ContentScale.Fit
+        )
+    }
+    if (enlarged) {
+        val loadedBitmap = (state as? RemotePreviewState.Loaded)?.bitmap
+        if (loadedBitmap != null) {
+            EnlargedImageDialog(EnlargeSource.Remote(loadedBitmap), label) { enlarged = false }
+        }
+    }
+}
+
+/** Where [EnlargedImageDialog] gets its full-size bitmap from. */
+private sealed class EnlargeSource {
+    /** Already-decoded, already full resolution — RemoteImagePreview never downsamples. */
+    data class Remote(val bitmap: ImageBitmap) : EnlargeSource()
+    /** LocalImagePreview's thumbnail is downsampled to 512px — re-decode larger instead of reusing it. */
+    data class Local(val uri: Uri) : EnlargeSource()
+}
+
+/**
+ * Full-screen-ish image viewer, reusing [WindowFrame] so it gets the same
+ * title bar + X-to-close chrome as every other dialog in this screen. Shows
+ * the image at its own true aspect ratio (never cropped, never letterboxed —
+ * unlike the fixed-ratio thumbnail slots) and offers a footer button to save
+ * a copy to the device's gallery.
+ */
+@Composable
+private fun EnlargedImageDialog(source: EnlargeSource, label: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val resolver = context.contentResolver
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
+
+    val bitmap by produceState<ImageBitmap?>(
+        initialValue = (source as? EnlargeSource.Remote)?.bitmap,
+        key1 = source
+    ) {
+        if (source is EnlargeSource.Local) {
+            value = withContext(Dispatchers.IO) { decodeDownsampled(resolver, source.uri, maxDimension = 2048) }
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        WindowFrame(
+            label,
+            Modifier.fillMaxWidth().fillMaxHeight(0.85f),
+            onClose = onDismiss,
+            compact = true,
+            fillContent = true,
+            footer = {
+                val current = bitmap
+                MirageButton(
+                    if (saving) "Đang lưu…" else "Tải ảnh xuống",
+                    {
+                        if (!saving && current != null) {
+                            saving = true
+                            val toSave = current
+                            scope.launch(Dispatchers.IO) {
+                                val ok = saveImageToGallery(context, toSave.asAndroidBitmap(), label)
+                                withContext(Dispatchers.Main) {
+                                    saving = false
+                                    Toast.makeText(
+                                        context,
+                                        if (ok) "Đã lưu ảnh vào thư viện" else "Không lưu được ảnh. Thử lại sau.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        }
+                    },
+                    Modifier.fillMaxWidth()
+                )
+            }
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                val current = bitmap
+                if (current == null) {
+                    CircularProgressIndicator(color = Ink)
+                } else {
+                    // True aspect ratio, not the fixed thumbnail ratio — Fit
+                    // against its own ratio means no letterboxing here either.
+                    val trueRatio = remember(current) { current.width.toFloat() / current.height.toFloat() }
+                    Image(
+                        current, label,
+                        Modifier.fillMaxWidth().aspectRatio(trueRatio).clip(CardShape),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Saves [bitmap] into Pictures/CarLed via MediaStore. On Android 10+ (scoped
+ * storage) this needs no storage permission. On Android 9 and below it still
+ * requires WRITE_EXTERNAL_STORAGE to be granted — if this app's minSdk
+ * predates Android 10, add a runtime permission request around this call for
+ * those OS versions before shipping.
+ */
+private fun saveImageToGallery(context: Context, bitmap: Bitmap, label: String): Boolean {
+    val safeName = label.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { "image" }
+    val displayName = "carled_${safeName}_${System.currentTimeMillis()}.jpg"
+    return try {
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/CarLed")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+        }
+        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return false
+        val wrote = resolver.openOutputStream(uri)?.use { out ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+        } ?: false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        }
+        wrote
+    } catch (e: Exception) {
+        android.util.Log.e("ImageDownload", "Save failed for $displayName", e)
+        false
     }
 }

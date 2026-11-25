@@ -192,6 +192,18 @@ class LoginViewModel(
         it.copy(showVerifyDialog = false, verificationCode = "", verifyError = null)
     }
 
+    // Forgot-password (ForgotPasswordScreen)
+
+    /** Called once a forgot-password OTP reset has actually succeeded server-side. */
+    fun notifyPasswordResetSuccess(email: String) = _uiState.update {
+        it.copy(
+            email = email,
+            password = "",
+            errorMessage = null,
+            successMessage = PASSWORD_RESET_SUCCESS_MESSAGE
+        )
+    }
+
     // Auth func (for login / OAuth)
 
     private fun authenticate(
@@ -245,6 +257,7 @@ class LoginViewModel(
 
     private companion object {
         const val VERIFY_SUCCESS_MESSAGE = "Xác thực email thành công! Vui lòng đăng nhập."
+        const val PASSWORD_RESET_SUCCESS_MESSAGE = "Đặt lại mật khẩu thành công! Vui lòng đăng nhập bằng mật khẩu mới."
         const val SOCIAL_EMAIL_SUFFIX = ".user@carled.vn"
         const val SOCIAL_PLACEHOLDER_PASSWORD = "social_pass_123"
     }

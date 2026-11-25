@@ -37,6 +37,7 @@ fun MirageProfileScreen(
     onOpenControlTab: () -> Unit,
     onOpenPanelControl: () -> Unit,
     onOpenLibraryTab: () -> Unit,
+    onOpenAccountSecurity: () -> Unit,
     onLogout: () -> Unit
 ) {
     val connectionState by control.connectionState.collectAsState()
@@ -112,7 +113,7 @@ fun MirageProfileScreen(
 
             HardMenuList(
                 items = listOf(
-                    HardMenuItem("Account Security"),
+                    HardMenuItem("Account Security") { onOpenAccountSecurity() },
                     HardMenuItem("Settings"),
                     HardMenuItem("Logout") { confirmLogout = true }
                 )

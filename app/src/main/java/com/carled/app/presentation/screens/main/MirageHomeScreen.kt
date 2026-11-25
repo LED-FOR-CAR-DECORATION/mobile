@@ -60,6 +60,9 @@ import com.carled.app.presentation.screens.control.MirageControlScreen
 import com.carled.app.presentation.screens.control.OwnedDevicesViewModel
 import com.carled.app.presentation.screens.marquee.MarqueeViewModel
 import com.carled.app.presentation.screens.marquee.TextProfilesState
+import com.carled.app.core.di.ServiceLocator
+import com.carled.app.presentation.screens.profile.ChangePasswordViewModel
+import com.carled.app.presentation.screens.profile.MirageChangePasswordScreen
 import com.carled.app.presentation.screens.profile.MirageProfileScreen
 import com.carled.app.presentation.screens.scan.ScanViewModel
 import com.carled.app.presentation.theme.Cream
@@ -96,6 +99,8 @@ fun MirageHomeScreen(
 ) {
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
     BackHandler(enabled = tab == HOME_TAB_COMMISSION) { tab = HOME_TAB_HOME }
+    var showChangePassword by remember { mutableStateOf(false) }
+    BackHandler(enabled = showChangePassword) { showChangePassword = false }
     var confirmDisconnect by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
@@ -109,6 +114,18 @@ fun MirageHomeScreen(
     val alias = device?.deviceName ?: "CarLED-Ambient"
     var draftName by remember { mutableStateOf(alias) }
     val titles = listOf("Trang chủ", "Nội dung LED", "Điều khiển", "Commission", "Tài khoản")
+
+    // null only if user/email isn't loaded yet — Account Security guards against
+    // that below rather than crash-constructing this with a blank email.
+    val changePasswordViewModel: ChangePasswordViewModel? = remember(user?.email) {
+        user?.email?.takeIf { it.isNotBlank() }?.let { email ->
+            ChangePasswordViewModel(
+                userEmail = email,
+                forgotPasswordUseCase = ServiceLocator.forgotPasswordUseCase,
+                resetPasswordUseCase = ServiceLocator.resetPasswordUseCase
+            )
+        }
+    }
 
     val profilesFlow = remember(marquee) { marquee?.profiles ?: MutableStateFlow(TextProfilesState()).asStateFlow() }
     val profilesState by profilesFlow.collectAsState()
@@ -161,7 +178,7 @@ fun MirageHomeScreen(
                             }
                         }
 
-                        // Quick start — icons scaled up to 48.dp (2x bigger)
+
                         DeviceSection(title = "Quick start") {
                             Row(
                                 Modifier.fillMaxWidth().flatSurface(color = Cream)
@@ -192,8 +209,12 @@ fun MirageHomeScreen(
                                     .clickable { tab = HOME_TAB_COMMISSION }.padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                                    Image(painterResource(R.drawable.ic_qrcode), contentDescription = null, modifier = Modifier.size(48.dp))
+                                Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                                    Image(
+                                        painter = painterResource(R.drawable.ic_com),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(96.dp)
+                                    )
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Text("Commission a custom LED design from our team.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -269,15 +290,29 @@ fun MirageHomeScreen(
             }
             HOME_TAB_ACCOUNT -> {
                 Box(Modifier.padding(padding).fillMaxSize()) {
-                    MirageProfileScreen(
-                        user = user,
-                        control = control,
-                        back = { tab = HOME_TAB_HOME },
-                        onOpenControlTab = { tab = HOME_TAB_CONTROL },
-                        onOpenPanelControl = { openControl() },
-                        onOpenLibraryTab = { tab = HOME_TAB_LIBRARY },
-                        onLogout = { scanner.disconnectDevice(); logout() }
-                    )
+                    if (showChangePassword && changePasswordViewModel != null) {
+                        MirageChangePasswordScreen(
+                            vm = changePasswordViewModel,
+                            back = { showChangePassword = false }
+                        )
+                    } else {
+                        MirageProfileScreen(
+                            user = user,
+                            control = control,
+                            back = { tab = HOME_TAB_HOME },
+                            onOpenControlTab = { tab = HOME_TAB_CONTROL },
+                            onOpenPanelControl = { openControl() },
+                            onOpenLibraryTab = { tab = HOME_TAB_LIBRARY },
+                            onOpenAccountSecurity = {
+                                // changePasswordViewModel is only null before the account's
+                                // email has loaded; Account Security is already deep in a
+                                // logged-in screen, so this is a defensive no-op, not an
+                                // expected path.
+                                if (changePasswordViewModel != null) showChangePassword = true
+                            },
+                            onLogout = { scanner.disconnectDevice(); logout() }
+                        )
+                    }
                 }
             }
             HOME_TAB_COMMISSION -> {

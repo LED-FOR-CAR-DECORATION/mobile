@@ -1,6 +1,5 @@
 package com.carled.app.presentation.components
 
-
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -22,19 +21,15 @@ import androidx.compose.ui.unit.dp
 import com.carled.app.R
 import com.carled.app.presentation.theme.*
 
-private enum class NavTab(val label: String, @DrawableRes val icon: Int? = null) {
+private enum class NavTab(val label: String, @DrawableRes val icon: Int) {
     HOME("Home", R.drawable.ic_home),
     GALLERY("Gallery", R.drawable.ic_gallery),
     DEVICES("My Devices", R.drawable.ic_settings),
-    // No drawable asset yet — drawn with the rough CommissionGlyph below
-    // instead of painterResource, same placeholder pattern as the rest
-    // of TemporaryIcons.kt.
-    COMMISSION("Commission"),
+    COMMISSION("Commission", R.drawable.ic_com),
     PROFILE("Profile", R.drawable.ic_profile)
 }
 
-
-
+private const val COMMISSION_ASPECT_RATIO = 52f / 28f
 private val SHADOW_OFFSET = 8.dp
 private val ICON_CORNER = RoundedCornerShape(10.dp)
 private val CARD_CORNER = RoundedCornerShape(HardStyle.CornerRadius)
@@ -69,6 +64,13 @@ fun HardNavBar(
         ) {
             NavTab.entries.forEachIndexed { index, tab ->
                 val selected = selectedIndex == index
+                val iconModifier = if (tab == NavTab.COMMISSION) {
+                    Modifier
+                        .width(sizing.iconSize * COMMISSION_ASPECT_RATIO)
+                        .height(sizing.iconSize)
+                } else {
+                    Modifier.size(sizing.iconSize)
+                }
 
                 Column(
                     modifier = Modifier
@@ -91,15 +93,11 @@ fun HardNavBar(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (tab.icon != null) {
-                            Image(
-                                painter = painterResource(tab.icon),
-                                contentDescription = tab.label,
-                                modifier = Modifier.size(sizing.iconSize)
-                            )
-                        } else {
-                            CommissionGlyph(color = Ink, size = sizing.iconSize)
-                        }
+                        Image(
+                            painter = painterResource(tab.icon),
+                            contentDescription = tab.label,
+                            modifier = iconModifier
+                        )
                     }
 
                     Text(

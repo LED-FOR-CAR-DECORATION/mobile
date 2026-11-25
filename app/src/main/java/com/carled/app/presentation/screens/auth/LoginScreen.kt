@@ -17,6 +17,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
@@ -34,6 +37,7 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
 import com.carled.app.R
+import com.carled.app.core.di.ServiceLocator
 import com.carled.app.presentation.components.HardButton
 import com.carled.app.presentation.components.HardCheckbox
 import com.carled.app.presentation.components.HardTextField
@@ -59,12 +63,23 @@ private val SocialProviders = listOf("Google", "Apple", "Facebook", "Guest")
 fun LoginScreen(
     viewModel: LoginViewModel,
     onLoginSuccess: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // Default-constructed from ServiceLocator so "forgot password" works without
+    // any nav-graph wiring. Swap this for your own factory/DI if you have one —
+    // remember{} here won't survive process death, only config changes within
+    // this composition.
+    forgotPasswordViewModel: ForgotPasswordViewModel = remember {
+        ForgotPasswordViewModel(
+            forgotPasswordUseCase = ServiceLocator.forgotPasswordUseCase,
+            resetPasswordUseCase = ServiceLocator.resetPasswordUseCase
+        )
+    }
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
     val signInScope = rememberCoroutineScope()
+    var showForgotPassword by remember { mutableStateOf(false) }
 
     val submit: () -> Unit = {
         focusManager.clearFocus()
@@ -80,8 +95,8 @@ fun LoginScreen(
         onAcceptTermsChange = viewModel::onAcceptTermsChange,
         onSubmit = submit,
         onForgotPasswordClick = {
-            viewModel.onEmailChange("demo@carled.vn")
-            viewModel.onPasswordChange("123456")
+            forgotPasswordViewModel.reset()
+            showForgotPassword = true
         },
         onToggleMode = viewModel::toggleMode,
         onSocialClick = { provider ->
@@ -108,6 +123,17 @@ fun LoginScreen(
         onDismissVerifyDialog = viewModel::dismissVerifyDialog,
         modifier = modifier
     )
+
+    if (showForgotPassword) {
+        ForgotPasswordScreen(
+            viewModel = forgotPasswordViewModel,
+            onDismiss = { showForgotPassword = false },
+            onPasswordResetSuccess = { email ->
+                viewModel.notifyPasswordResetSuccess(email)
+                showForgotPassword = false
+            }
+        )
+    }
 }
 
 @Composable
