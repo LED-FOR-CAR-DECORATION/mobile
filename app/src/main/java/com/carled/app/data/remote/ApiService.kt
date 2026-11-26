@@ -3,6 +3,7 @@ package com.carled.app.data.remote
 import com.carled.app.data.remote.dto.ClaimDeviceRequest
 import com.carled.app.data.remote.dto.ClaimDeviceResponse
 import com.carled.app.data.remote.dto.ApiResponse
+import com.carled.app.data.remote.dto.CustomerActiveSubscriptionResponse
 import com.carled.app.data.remote.dto.DeviceDto
 import com.carled.app.data.remote.dto.DeviceDetailDto
 import com.carled.app.data.remote.dto.ForgotPasswordRequest
@@ -235,5 +236,22 @@ interface ApiService {
     suspend fun getOwnedCharacters(
         @Header("Authorization") authorization: String
     ): Response<ApiResponse<List<CustomerOwnedCharacterResponse>>>
+
+    // -------------------------------------------------------------------------
+    // Subscriptions — entitlements, including the mobile text-profile slot
+    // limit (CustomerActiveSubscriptionResponse.maxMobileProfiles).
+    // -------------------------------------------------------------------------
+
+    /** GET /api/customer/subscriptions/active — single active subscription, or null data if none. */
+    @GET("api/customer/subscriptions/active")
+    suspend fun getActiveSubscription(
+        @Header("Authorization") authorization: String
+    ): Response<ApiResponse<CustomerActiveSubscriptionResponse?>>
+
+    /** GET /api/customer/subscriptions/active/all — every active, non-expired entitlement. */
+    @GET("api/customer/subscriptions/active/all")
+    suspend fun getActiveSubscriptions(
+        @Header("Authorization") authorization: String
+    ): Response<ApiResponse<List<CustomerActiveSubscriptionResponse>>>
 
 }

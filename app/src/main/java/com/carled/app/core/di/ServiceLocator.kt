@@ -16,6 +16,8 @@ import com.carled.app.data.repository.CharacterRepositoryImpl
 import com.carled.app.data.repository.CommissionPricingRepositoryImpl
 import com.carled.app.data.repository.CommissionRepositoryImpl
 import com.carled.app.data.repository.MediaRepositoryImpl
+import com.carled.app.data.repository.SubscriptionRepositoryImpl
+import com.carled.app.domain.model.ServerTextProfilePlanProvider
 import com.carled.app.domain.repository.AuthRepository
 import com.carled.app.domain.repository.BleDeviceRepository
 import com.carled.app.domain.repository.CharacterRepository
@@ -25,6 +27,7 @@ import com.carled.app.domain.repository.DeviceClaimRepository
 import com.carled.app.domain.repository.DeviceRepository
 import com.carled.app.domain.repository.MediaRepository
 import com.carled.app.domain.repository.ProductRepository
+import com.carled.app.domain.repository.SubscriptionRepository
 import com.carled.app.domain.usecase.auth.ForgotPasswordUseCase
 import com.carled.app.domain.usecase.auth.GoogleAuthUseCase
 import com.carled.app.domain.usecase.ble.*
@@ -232,6 +235,19 @@ object ServiceLocator {
         CharacterRepositoryImpl(apiService, deviceAuthHeaderProvider)
     }
 
+    // -------------------------------------------------------------------------
+    // Subscriptions — drives the marquee text-profile slot limit from the
+    // customer's real entitlements instead of the hardcoded BASIC default.
+    // -------------------------------------------------------------------------
+
+    val subscriptionRepository: SubscriptionRepository by lazy {
+        SubscriptionRepositoryImpl(apiService, deviceAuthHeaderProvider)
+    }
+
+    val textProfilePlanProvider: ServerTextProfilePlanProvider by lazy {
+        ServerTextProfilePlanProvider(subscriptionRepository)
+    }
+
 
     val bleUseCases: BleUseCases by lazy {
         BleUseCases(
@@ -262,7 +278,9 @@ object ServiceLocator {
 
     val loginUseCase: LoginUseCase by lazy { LoginUseCase(authRepository) }
     val registerUseCase: RegisterUseCase by lazy { RegisterUseCase(authRepository) }
-    val logoutUseCase: LogoutUseCase by lazy { LogoutUseCase(authRepository) }
+    val logoutUseCase: LogoutUseCase by lazy {
+        LogoutUseCase(authRepository, onLoggedOut = { textProfilePlanProvider.reset() })
+    }
     val verifyEmailUseCase: VerifyEmailUseCase by lazy { VerifyEmailUseCase(authRepository) }
     val resendVerificationUseCase: ResendVerificationUseCase by lazy { ResendVerificationUseCase(authRepository) }
     val googleAuthUseCase: GoogleAuthUseCase by lazy { GoogleAuthUseCase(authRepository) }

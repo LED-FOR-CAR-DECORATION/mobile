@@ -3,6 +3,7 @@ package com.carled.app.presentation.screens.main
 import androidx.compose.foundation.Image
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,12 +48,13 @@ import com.carled.app.domain.model.device.isValidDeviceName
 import com.carled.app.presentation.components.ChevronGlyph
 import com.carled.app.presentation.components.DeviceSection
 import com.carled.app.presentation.components.EmptyRow
+import com.carled.app.presentation.components.HardButton
 import com.carled.app.presentation.components.HardNavBar
+import com.carled.app.presentation.components.HardStyle
 import com.carled.app.presentation.components.MirageBackground
 import com.carled.app.presentation.components.MirageMuted
 import com.carled.app.presentation.components.WindowFrame
 import com.carled.app.presentation.components.flatSurface
-import com.carled.app.presentation.components.MirageButton
 import com.carled.app.presentation.screens.commission.CommissionScreen
 import com.carled.app.presentation.screens.control.ControlViewModel
 import com.carled.app.presentation.screens.control.MirageControlScreen
@@ -79,20 +81,14 @@ const val HOME_TAB_CONTROL = 2
 const val HOME_TAB_COMMISSION = 3
 const val HOME_TAB_ACCOUNT = 4
 
-// MockLetterProfileStore / LetterProfile removed — the Home tab now reads
-// real, cache-backed profiles via MarqueeViewModel.profiles (the same
-// TextProfileRepository-backed state the Marquee screen already uses),
-// instead of two hardcoded fake entries that nothing could edit, delete,
-// or send.
-
 @Composable
 fun MirageHomeScreen(
     control: ControlViewModel, scanner: ScanViewModel, ownedDevices: OwnedDevicesViewModel, user: User?,
-    marquee: MarqueeViewModel?, // NEW — null only before an account id is available
+    marquee: MarqueeViewModel?,
     openScan: () -> Unit, openControl: () -> Unit, openCanvas: (String?) -> Unit,
     openMarquee: () -> Unit, openUpload: () -> Unit, logout: () -> Unit,
     openEffect: () -> Unit = {},
-    openEditProfile: () -> Unit = {}, // kept — this is the USER/account "Edit" link below, unrelated to letter profiles
+    openEditProfile: () -> Unit = {},
     openClaimDevice: () -> Unit = {},
     openDeviceInfo: (String) -> Unit = {},
     initialTab: Int = HOME_TAB_HOME,
@@ -124,8 +120,6 @@ fun MirageHomeScreen(
     val alias = device?.deviceName ?: "CarLED-Ambient"
     var draftName by remember { mutableStateOf(alias) }
 
-    // null only if user/email isn't loaded yet — Account Security guards against
-    // that below rather than crash-constructing this with a blank email.
     val changePasswordViewModel: ChangePasswordViewModel? = remember(user?.email) {
         user?.email?.takeIf { it.isNotBlank() }?.let { email ->
             ChangePasswordViewModel(
@@ -136,14 +130,6 @@ fun MirageHomeScreen(
         }
     }
 
-    // Keyed on user?.id, NOT on user itself. User is a data class, so
-    // remember(user) re-keys on ANY field change — including fullName/phone,
-    // which change on every successful save. That was recreating this
-    // ViewModel right after Save succeeded, discarding the one that just
-    // wrote birthDate and re-reading userPreferences.getBirthDate(user.id)
-    // from scratch into a fresh instance (same id, so same key — this just
-    // looked like data loss, since onSuccess had already updated the old
-    // instance's state, which was then thrown away).
     val editProfileViewModel: EditProfileViewModel? = remember(user?.id) {
         user?.let {
             EditProfileViewModel(
@@ -153,12 +139,6 @@ fun MirageHomeScreen(
             )
         }
     }
-    // A cold start seeds `user` with buildRestoredUser()'s placeholder
-    // (blank fullName, null phone) before the real profile has loaded; since
-    // editProfileViewModel above is now only rebuilt when the id itself
-    // changes, it would otherwise be stuck showing that placeholder forever.
-    // This pushes every later `user` update (the real profile arriving, or
-    // this same screen's own save) into the existing ViewModel instead.
     LaunchedEffect(user) {
         user?.let { editProfileViewModel?.syncFromUpstream(it) }
     }
@@ -180,113 +160,125 @@ fun MirageHomeScreen(
             HOME_TAB_HOME -> {
                 Box(Modifier.padding(padding).fillMaxSize()) {
                     WindowFrame(title = "Home", modifier = Modifier.fillMaxSize()) {
-                        DeviceSection(title = "Shortcut các chức năng:") {
-                            Row(
-                                Modifier.fillMaxWidth().flatSurface(color = Cream)
-                                    .clickable(onClick = openUpload).padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                                    Image(painterResource(R.drawable.ic_image_upload), contentDescription = null, modifier = Modifier.size(48.dp))
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Text("Tải lên/Chiếu ảnh từ kho ảnh cá nhân.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                                ChevronGlyph()
-                            }
-                            Row(
-                                Modifier.fillMaxWidth().flatSurface(color = Cream)
-                                    .clickable(onClick = openEffect).padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(Modifier.width(78.dp).height(66.dp), contentAlignment = Alignment.Center) {
-                                    val ledScreenBitmap = ImageBitmap.imageResource(R.drawable.ic_pixelperfect_ledscreen)
-                                    Image(
-                                        painter = BitmapPainter(ledScreenBitmap, filterQuality = FilterQuality.None),
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Fit,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Text("Màu đơn sắc & hiệu ứng LED.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                                ChevronGlyph()
-                            }
-                            Row(
-                                Modifier.fillMaxWidth().flatSurface(color = Cream)
-                                    .clickable(onClick = openClaimDevice).padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                                    Image(painterResource(R.drawable.ic_qrcode), contentDescription = null, modifier = Modifier.size(48.dp))
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Text("Kích hoạt thiết bị qua mã QR.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                                ChevronGlyph()
-                            }
-                            Row(
-                                Modifier.fillMaxWidth().flatSurface(color = Cream)
-                                    .clickable { setTab(HOME_TAB_COMMISSION) }.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                                    Image(
-                                        painter = painterResource(R.drawable.ic_com),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(96.dp)
-                                    )
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Text("Dịch vụ Commission thiết kế riêng. ", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                                ChevronGlyph()
-                            }
-                        }
-
-                        // Saved letter profile — now real, cache-backed data from
-                        // MarqueeViewModel.profiles (TextProfileRepository), capped
-                        // at profilesState.plan.limit (3, per TextProfilePlan.BASIC).
-                        DeviceSection(title = "Profile chữ cá nhân  ${profilesState.entries.size}/${profilesState.plan.limit}") {
-                            when {
-                                marquee == null -> EmptyRow("Đăng nhập để xem profile đã lưu.")
-                                profilesState.entries.isEmpty() -> EmptyRow("Chưa có bản lưu nào. Tạo profile mới bên dưới.")
-                                else -> profilesState.entries.forEach { profile ->
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            DeviceSection(title = "Shortcut các chức năng:") {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
                                     Row(
                                         Modifier.fillMaxWidth().flatSurface(color = Cream)
-                                            .clickable {
-                                                // Instant send: load this profile's text,
-                                                // colors, speed and effect into state, then
-                                                // send straight to the LED — no extra screen.
-                                                marquee.selectProfile(profile.id)
-                                                marquee.sendMarquee()
-                                            }
-                                            .padding(12.dp),
+                                            .clickable(onClick = openUpload).padding(12.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                                            Image(painterResource(R.drawable.ic_image_upload), contentDescription = null, modifier = Modifier.size(48.dp))
+                                        }
+                                        Spacer(Modifier.width(12.dp))
+                                        Text("Tải lên/Chiếu ảnh từ kho ảnh cá nhân.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                        ChevronGlyph()
+                                    }
+                                    Row(
+                                        Modifier.fillMaxWidth().flatSurface(color = Cream)
+                                            .clickable(onClick = openEffect).padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(Modifier.width(78.dp).height(66.dp), contentAlignment = Alignment.Center) {
+                                            val ledScreenBitmap = ImageBitmap.imageResource(R.drawable.ic_pixelperfect_ledscreen)
                                             Image(
-                                                painter = painterResource(R.drawable.ic_pixel_perfect_abc),
+                                                painter = BitmapPainter(ledScreenBitmap, filterQuality = FilterQuality.None),
                                                 contentDescription = null,
-                                                modifier = Modifier.size(48.dp)
+                                                contentScale = ContentScale.Fit,
+                                                modifier = Modifier.fillMaxSize()
                                             )
                                         }
                                         Spacer(Modifier.width(12.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(profile.name, color = Ink, fontSize = 14.sp)
-                                            Text(profile.text, color = MirageMuted, fontSize = 12.sp, maxLines = 1)
+                                        Text("Màu đơn sắc & hiệu ứng LED.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                        ChevronGlyph()
+                                    }
+                                    Row(
+                                        Modifier.fillMaxWidth().flatSurface(color = Cream)
+                                            .clickable(onClick = openClaimDevice).padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                                            Image(painterResource(R.drawable.ic_qrcode), contentDescription = null, modifier = Modifier.size(48.dp))
                                         }
-                                        // Edit opens the full Marquee editor. It does NOT yet
-                                        // pre-load this specific profile there — openMarquee()
-                                        // takes no profile id today. Flagged, not silently implied.
-                                        TextButton(onClick = { openMarquee() }) { Text("Sửa") }
-                                        TextButton(onClick = { marquee.deleteProfile(profile.id) }) { Text("Xóa") }
+                                        Spacer(Modifier.width(12.dp))
+                                        Text("Kích hoạt thiết bị qua mã QR.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                        ChevronGlyph()
+                                    }
+                                    Row(
+                                        Modifier.fillMaxWidth().flatSurface(color = Cream)
+                                            .clickable { setTab(HOME_TAB_COMMISSION) }.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                                            Image(
+                                                painter = painterResource(R.drawable.ic_com),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(96.dp)
+                                            )
+                                        }
+                                        Spacer(Modifier.width(12.dp))
+                                        Text("Dịch vụ Commission thiết kế riêng. ", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                        ChevronGlyph()
                                     }
                                 }
                             }
-                            if (marquee != null) {
-                                MirageButton("+ Tạo profile mới", openMarquee, Modifier.fillMaxWidth())
-                            }
-                        }
 
-                        feedbackMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+                            DeviceSection(title = "Profile chữ cá nhân  ${profilesState.entries.size}/${profilesState.plan.limit}") {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    when {
+                                        marquee == null -> EmptyRow("Đăng nhập để xem profile đã lưu.")
+                                        profilesState.entries.isEmpty() -> EmptyRow("Chưa có bản lưu nào. Tạo profile mới bên dưới.")
+                                        else -> profilesState.entries.forEach { profile ->
+                                            Row(
+                                                Modifier.fillMaxWidth().flatSurface(color = Cream)
+                                                    .clickable {
+                                                        marquee.selectProfile(profile.id)
+                                                        marquee.sendMarquee()
+                                                    }
+                                                    .padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                                                    Image(
+                                                        painter = painterResource(R.drawable.ic_pixel_perfect_abc),
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(48.dp)
+                                                    )
+                                                }
+                                                Spacer(Modifier.width(12.dp))
+                                                Column(Modifier.weight(1f)) {
+                                                    Text(profile.name, color = Ink, fontSize = 14.sp)
+                                                    Text(profile.text, color = MirageMuted, fontSize = 12.sp, maxLines = 1)
+                                                }
+                                                TextButton(onClick = { openMarquee() }) { Text("Sửa") }
+                                                TextButton(onClick = { marquee.deleteProfile(profile.id) }) { Text("Xóa") }
+                                            }
+                                        }
+                                    }
+                                    if (marquee != null) {
+                                        HardButton(
+                                            text = "+ Tạo profile mới",
+                                            onClick = openMarquee,
+                                            filled = false,
+                                            shadowOffset = HardStyle.CardOffset,
+                                            modifier = Modifier.fillMaxWidth().height(50.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            feedbackMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+                        }
                     }
                 }
             }
@@ -331,10 +323,6 @@ fun MirageHomeScreen(
                                 onOpenPanelControl = { openControl() },
                                 onOpenLibraryTab = { setTab(HOME_TAB_LIBRARY) },
                                 onOpenAccountSecurity = {
-                                    // changePasswordViewModel is only null before the account's
-                                    // email has loaded; Account Security is already deep in a
-                                    // logged-in screen, so this is a defensive no-op, not an
-                                    // expected path.
                                     if (changePasswordViewModel != null) showChangePassword = true
                                 },
                                 onOpenEditProfile = {

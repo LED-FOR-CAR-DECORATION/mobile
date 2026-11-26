@@ -65,11 +65,27 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
     val marquee: MarqueeViewModel? = accountId?.let { id ->
         viewModel(
             key = "marquee:$id",
-            factory = factory { MarqueeViewModel(ServiceLocator.bleUseCases, TextProfileStore(context, id)) }
+            factory = factory {
+                // ServiceLocator.textProfilePlanProvider is shared between the store (so
+                // TextProfileStore.plan() reflects the real subscription entitlement
+                // instead of staying pinned to BASIC) and the ViewModel (so init{} can
+                // call .refresh() on login and .reset() already runs on logout via
+                // ServiceLocator.logoutUseCase) — same singleton, one cache, not two.
+                MarqueeViewModel(
+                    ServiceLocator.bleUseCases,
+                    TextProfileStore(context, id, ServiceLocator.textProfilePlanProvider),
+                    ServiceLocator.textProfilePlanProvider
+                )
+            }
         )
     }
 
     var homeTab by rememberSaveable { mutableIntStateOf(HOME_TAB_HOME) }
+
+    // A same-account re-login reuses the retained MarqueeViewModel (same key), so its
+    // init{} doesn't run again. Keying on the instance re-fetches the subscription plan
+    // each time the ViewModel (re)appears after login.
+    LaunchedEffect(marquee) { marquee?.refreshPlan() }
 
     val goBack: () -> Unit = { navController.popBackStack() }
     val goScan: () -> Unit = { navController.navigate(NavRoute.Scan.route) }

@@ -1,9 +1,11 @@
 package com.carled.app.presentation.screens.marquee
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.carled.app.domain.model.TelemetryEvent
 import com.carled.app.domain.model.MarqueeLayout
+import com.carled.app.domain.model.ServerTextProfilePlanProvider
 import com.carled.app.domain.model.TextProfile
 import com.carled.app.domain.model.TextProfilePlan
 import com.carled.app.domain.model.TextProfileRepository
@@ -28,7 +30,19 @@ import kotlinx.coroutines.flow.first
 data class TextProfilesState(val entries: List<TextProfile> = emptyList(), val plan: TextProfilePlan = TextProfilePlan.BASIC,
                              val selectedId: String? = null, val busy: Boolean = false, val loaded: Boolean = false, val error: String? = null)
 
-class MarqueeViewModel(private val bleUseCases: BleUseCases, private val profileStore: TextProfileRepository? = null) : ViewModel() {
+/**
+ * [planProvider] is optional and defaults to null so existing call sites that
+ * construct MarqueeViewModel without it keep compiling — pass
+ * ServiceLocator.textProfilePlanProvider in from wherever this ViewModel is
+ * built (e.g. its factory / Composable) to have the profile-slot limit driven
+ * by the customer's real subscription entitlement instead of staying pinned
+ * to TextProfilePlan.BASIC.
+ */
+class MarqueeViewModel(
+    private val bleUseCases: BleUseCases,
+    private val profileStore: TextProfileRepository? = null,
+    private val planProvider: ServerTextProfilePlanProvider? = null
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MarqueeUiState())
     val uiState: StateFlow<MarqueeUiState> = _uiState.asStateFlow()
@@ -37,7 +51,32 @@ class MarqueeViewModel(private val bleUseCases: BleUseCases, private val profile
     val hasProfiles = profileStore != null
     private val _profiles = MutableStateFlow(TextProfilesState())
     val profiles = _profiles.asStateFlow()
-    init { reloadProfiles() }
+    init {
+        reloadProfiles()
+        refreshPlan()
+    }
+
+    /**
+     * Re-fetches the subscription entitlement and pushes the result into
+     * [profiles] directly. Called from init AND from AppNavigation whenever this
+     * ViewModel is (re)attached after a login — a same-account re-login reuses
+     * this instance, so init{} alone would never run again. The plan is set
+     * directly instead of via reloadProfiles(), which returns early while busy
+     * and could silently drop the refreshed value.
+     */
+    fun refreshPlan() {
+        val provider = planProvider ?: return
+        viewModelScope.launch {
+            try {
+                provider.refresh()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("MarqueeVM", "Subscription plan refresh failed; keeping last known plan", e)
+            }
+            _profiles.update { it.copy(plan = provider.currentPlan()) }
+        }
+    }
     fun clearProfileError() { _profiles.update { it.copy(error = null) } }
     fun reloadProfiles() {
         val store=profileStore ?: return
