@@ -94,7 +94,7 @@ class MarqueeViewModel(
     fun selectProfile(id:String) {
         if (_uiState.value.isSending || _profiles.value.busy) return
         val p=_profiles.value.entries.firstOrNull { it.id==id } ?: return
-        _uiState.update { it.copy(text=p.text,size=p.size,speed=p.speed,scrollMode=p.mode,r=p.r,g=p.g,b=p.b,rainbow=p.rainbow,feedbackMessage="Đã nạp profile ${p.name}. Chọn Hiển thị trên LED để phát.") }
+        _uiState.update { it.copy(text=p.text,size=p.size,speed=p.speed,scrollMode=p.mode,r=p.r,g=p.g,b=p.b,rainbow=p.rainbow,blinkSpeed=p.blinkSpeed,feedbackMessage="Đã nạp profile ${p.name}. Chọn Hiển thị trên LED để phát.") }
         _profiles.update { it.copy(selectedId=id,error=null) }
     }
     fun saveProfile(name:String, update:Boolean, onSaved:()->Unit = {}) {
@@ -103,7 +103,7 @@ class MarqueeViewModel(
         if (ps.busy || !ps.loaded || _uiState.value.isSending) return
         val id=if(update) ps.selectedId ?: return else UUID.randomUUID().toString()
         val s=_uiState.value
-        val p=TextProfile(id,name.trim(),MarqueeLayout.clean(s.text),s.size,s.speed,s.scrollMode,s.r,s.g,s.b,s.rainbow)
+        val p=TextProfile(id,name.trim(),MarqueeLayout.clean(s.text),s.size,s.speed,s.scrollMode,s.r,s.g,s.b,s.rainbow,s.blinkSpeed)
         try { p.validate() } catch(e:Exception) { _profiles.update { it.copy(error=e.message) };return }
         _profiles.update { it.copy(busy=true,error=null) }
         viewModelScope.launch {
@@ -140,8 +140,14 @@ class MarqueeViewModel(
         _uiState.update { it.copy(speed = speed.coerceIn(1, 100)) }
     }
 
+    /** Letter scale, freely typable in the editor (1..4 — see MarqueeLayout.SCALE_RANGE). */
     fun updateSize(size: Int) {
-        _uiState.update { it.copy(size = size.coerceIn(1, 2)) }
+        _uiState.update { it.copy(size = size.coerceIn(MarqueeLayout.SCALE_RANGE.first, MarqueeLayout.SCALE_RANGE.last)) }
+    }
+
+    /** Nhấp nháy (blink) speed, independent of the scroll speed slider. */
+    fun updateBlinkSpeed(speed: Int) {
+        _uiState.update { it.copy(blinkSpeed = speed.coerceIn(1, 100)) }
     }
 
     fun toggleRainbow() {
@@ -189,7 +195,7 @@ class MarqueeViewModel(
         val cleanText = MarqueeLayout.clean(state.text)
         val layout = MarqueeLayout.fit(cleanText, state.size)
         if (state.scrollMode != "scroll_left" && !layout.fits) {
-            _uiState.update { it.copy(feedbackMessage = "Chữ vượt khung 64×32 ở cỡ 5×7. Rút ngắn còn tối đa 40 ký tự hoặc chọn Cuộn trái.") }; return
+            _uiState.update { it.copy(feedbackMessage = "Chữ vượt khung 64×32 ở cỡ ${layout.glyphLabel}. Rút ngắn nội dung, giảm cỡ chữ hoặc chọn Cuộn trái.") }; return
         }
         _uiState.update { it.copy(isSending = true, feedbackMessage = null) }
         viewModelScope.launch {
@@ -210,7 +216,7 @@ class MarqueeViewModel(
                             width = 64,
                             height = 32,
                             frameCount = 2,
-                            frameDelayMs = MarqueeLayout.BLINK_FRAME_DELAY_MS
+                            frameDelayMs = blinkDelayMs(state.blinkSpeed)
                         )
                         else bleUseCases.uploadProjection(
                             rgb565Data = layout.projection(false, color),
@@ -244,6 +250,9 @@ class MarqueeViewModel(
     }
 
     companion object {
+        /** Maps the 1..100 "Tốc độ nhấp nháy" slider to a firmware frame delay in ms — higher speed, shorter delay. */
+        fun blinkDelayMs(speed: Int): Int = (1050 - speed.coerceIn(1, 100) * 9).coerceIn(150, 1000)
+
         fun removeVietnameseTones(str: String): String {
             var s = str
             s = s.replace("[àáạảãâầấậẩẫăằắặẳẵ]".toRegex(), "a")
