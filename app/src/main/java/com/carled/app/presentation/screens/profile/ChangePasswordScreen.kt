@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -66,13 +67,16 @@ private fun ChangePasswordScreenContent(
             .fillMaxSize()
             .background(MirageBackground)
             .systemBarsPadding()
-            .padding(8.dp)
+            .padding(8.dp),
+        contentAlignment = Alignment.Center
     ) {
         WindowFrame(
             title = "Account security",
             onClose = onClose,
             compact = true,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .widthIn(max = 360.dp)
+                .wrapContentHeight()
         ) {
             Text(
                 "Change your password",

@@ -57,6 +57,18 @@ data class UserProfileData(
     val roles: List<String> = emptyList()
 )
 
+/**
+ * PUT /api/users/me body. The server replaces name/phone/avatar wholesale —
+ * email, credentials and roles cannot be changed through this endpoint.
+ * A null/blank phone or avatar clears that profile value; name is required
+ * (1–255 chars, trimmed).
+ */
+data class UpdateProfileRequest(
+    val name: String,
+    val phone: String? = null,
+    val avatar: String? = null
+)
+
 data class RegisterResponse(
     val data: RegisterData
 )

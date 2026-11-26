@@ -16,6 +16,7 @@ import com.carled.app.data.remote.dto.RegisterRequest
 import com.carled.app.data.remote.dto.RegisterResponse
 import com.carled.app.data.remote.dto.ResendVerificationRequest
 import com.carled.app.data.remote.dto.ResetPasswordRequest
+import com.carled.app.data.remote.dto.UpdateProfileRequest
 import com.carled.app.data.remote.dto.UserProfileResponse
 import com.carled.app.data.remote.dto.VerifyEmailRequest
 import com.carled.app.domain.model.CreateSignedUploadUrlRequest
@@ -105,6 +106,12 @@ interface ApiService {
     @GET("api/users/me")
     suspend fun getCurrentUserProfile(
         @Header("Authorization") authorization: String
+    ): Response<UserProfileResponse>
+
+    @retrofit2.http.PUT("api/users/me")
+    suspend fun updateCurrentUserProfile(
+        @Header("Authorization") authorization: String,
+        @Body request: UpdateProfileRequest
     ): Response<UserProfileResponse>
 
     // -------------------------------------------------------------------------
@@ -230,5 +237,3 @@ interface ApiService {
     ): Response<ApiResponse<List<CustomerOwnedCharacterResponse>>>
 
 }
-
-

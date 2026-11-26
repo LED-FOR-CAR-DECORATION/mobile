@@ -8,11 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.carled.app.core.common.Resource
 import com.carled.app.core.di.ServiceLocator
-import com.carled.app.domain.model.*
-import com.carled.app.domain.repository.CommissionPricingRepository
-import com.carled.app.domain.repository.CommissionRepository
-import com.carled.app.domain.repository.MediaRepository
 import com.carled.app.data.remote.CommissionChatSocket
+import com.carled.app.domain.model.PaymentSessionResponse
 import com.carled.app.domain.model.commission.CommissionAttachmentInput
 import com.carled.app.domain.model.commission.CommissionMessageResponse
 import com.carled.app.domain.model.commission.CommissionPriceCalculator
@@ -24,9 +21,11 @@ import com.carled.app.domain.model.commission.CreateCommissionRequest
 import com.carled.app.domain.model.commission.PricingRule
 import com.carled.app.domain.model.commission.SelectedOptionInput
 import com.carled.app.domain.model.commission.SelectionType
+import com.carled.app.domain.repository.CommissionPricingRepository
+import com.carled.app.domain.repository.CommissionRepository
+import com.carled.app.domain.repository.MediaRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -49,35 +48,35 @@ internal class CommissionViewModel(
 ) : ViewModel() {
 
     var draft by mutableStateOf(CommissionDraft())
+        private set
 
     private val _pricing = MutableStateFlow<Resource<CommissionPricingResponse>>(Resource.Loading)
-    val pricing: StateFlow<Resource<CommissionPricingResponse>> = _pricing.asStateFlow()
+    val pricing = _pricing.asStateFlow()
 
     private val _submission = MutableStateFlow<Resource<CommissionResponse>?>(null)
-    val submission: StateFlow<Resource<CommissionResponse>?> = _submission.asStateFlow()
+    val submission = _submission.asStateFlow()
 
     private val _commissions = MutableStateFlow<Resource<List<CommissionSummaryResponse>>>(Resource.Loading)
-    val commissions: StateFlow<Resource<List<CommissionSummaryResponse>>> = _commissions.asStateFlow()
+    val commissions = _commissions.asStateFlow()
 
-    private val _detail = MutableStateFlow<Map<Long, Resource<CommissionResponse>>>(emptyMap())
-    val detail: StateFlow<Map<Long, Resource<CommissionResponse>>> = _detail.asStateFlow()
+    private val _detail = MutableStateFlow(emptyMap<Long, Resource<CommissionResponse>>())
+    val detail = _detail.asStateFlow()
 
-    private val _messages = MutableStateFlow<Map<Long, Resource<List<CommissionMessageResponse>>>>(emptyMap())
-    val messages: StateFlow<Map<Long, Resource<List<CommissionMessageResponse>>>> = _messages.asStateFlow()
+    private val _messages = MutableStateFlow(emptyMap<Long, Resource<List<CommissionMessageResponse>>>())
+    val messages = _messages.asStateFlow()
 
     private val _payment = MutableStateFlow<Resource<PaymentSessionResponse>?>(null)
-    val payment: StateFlow<Resource<PaymentSessionResponse>?> = _payment.asStateFlow()
+    val payment = _payment.asStateFlow()
 
     private val _actionResult = MutableStateFlow<Resource<Unit>?>(null)
-    val actionResult: StateFlow<Resource<Unit>?> = _actionResult.asStateFlow()
+    val actionResult = _actionResult.asStateFlow()
+
+    private var chatJob: Job? = null
+
     init {
         loadPricing()
         loadCommissions()
     }
-
-    // -------------------------------------------------------------------------
-    // Pricing / draft
-    // -------------------------------------------------------------------------
 
     fun loadPricing() {
         viewModelScope.launch {
@@ -86,28 +85,43 @@ internal class CommissionViewModel(
         }
     }
 
-    fun selectTier(tierCode: String) { draft = draft.copy(selectedTierCode = tierCode) }
+    fun selectTier(tierCode: String) {
+        draft = draft.copy(selectedTierCode = tierCode)
+    }
 
     fun selectSingle(ruleKey: String, optionCode: String) {
-        draft = draft.copy(selections = draft.selections + (ruleKey to CommissionPriceCalculator.RuleSelection(selectedOptionCodes = setOf(optionCode))))
+        draft = draft.copy(
+            selections = draft.selections + (ruleKey to CommissionPriceCalculator.RuleSelection(selectedOptionCodes = setOf(optionCode)))
+        )
     }
 
     fun toggleMulti(ruleKey: String, optionCode: String) {
         val current = draft.selections[ruleKey]?.selectedOptionCodes.orEmpty()
         val updated = if (optionCode in current) current - optionCode else current + optionCode
-        draft = draft.copy(selections = draft.selections + (ruleKey to CommissionPriceCalculator.RuleSelection(selectedOptionCodes = updated)))
+        draft = draft.copy(
+            selections = draft.selections + (ruleKey to CommissionPriceCalculator.RuleSelection(selectedOptionCodes = updated))
+        )
     }
 
     fun setQuantity(ruleKey: String, quantity: Int) {
-        draft = draft.copy(selections = draft.selections + (ruleKey to CommissionPriceCalculator.RuleSelection(quantity = quantity)))
+        draft = draft.copy(
+            selections = draft.selections + (ruleKey to CommissionPriceCalculator.RuleSelection(quantity = quantity))
+        )
     }
 
     fun setText(ruleKey: String, text: String) {
-        draft = draft.copy(selections = draft.selections + (ruleKey to CommissionPriceCalculator.RuleSelection(text = text)))
+        draft = draft.copy(
+            selections = draft.selections + (ruleKey to CommissionPriceCalculator.RuleSelection(text = text))
+        )
     }
 
-    fun updateTitle(text: String) { draft = draft.copy(title = text) }
-    fun updateDescription(text: String) { draft = draft.copy(description = text) }
+    fun updateTitle(text: String) {
+        draft = draft.copy(title = text)
+    }
+
+    fun updateDescription(text: String) {
+        draft = draft.copy(description = text)
+    }
 
     fun addReference(uri: Uri, max: Int) {
         draft = draft.copy(references = (draft.references + uri).distinct().take(max))
@@ -123,10 +137,7 @@ internal class CommissionViewModel(
             when (rule.selectionType) {
                 SelectionType.SINGLE_SELECT, SelectionType.MULTI_SELECT -> {
                     val ids = rule.options.filter { it.optionCode in selection.selectedOptionCodes }.map { it.optionId }
-                    if (ids.isEmpty()) null else SelectedOptionInput(
-                        configId = rule.configId,
-                        optionIds = ids
-                    )
+                    if (ids.isEmpty()) null else SelectedOptionInput(configId = rule.configId, optionIds = ids)
                 }
                 SelectionType.QUANTITY -> selection.quantity?.takeIf { it > 0 }
                     ?.let { SelectedOptionInput(configId = rule.configId, quantity = it) }
@@ -134,11 +145,6 @@ internal class CommissionViewModel(
                     ?.let { SelectedOptionInput(configId = rule.configId, textValue = it) }
             }
         }
-
-    // -------------------------------------------------------------------------
-    // Submit — uploads reference images first (MED-01), then creates the
-    // commission, then refreshes the real list from the server.
-    // -------------------------------------------------------------------------
 
     fun submit() {
         val catalog = (pricing.value as? Resource.Success)?.data ?: return
@@ -182,11 +188,9 @@ internal class CommissionViewModel(
         }
     }
 
-    fun consumeSubmission() { _submission.value = null }
-
-    // -------------------------------------------------------------------------
-    // Commission list / detail — GET /api/commissions/my, GET /api/commissions/{id}
-    // -------------------------------------------------------------------------
+    fun consumeSubmission() {
+        _submission.value = null
+    }
 
     fun loadCommissions(status: String? = null) {
         viewModelScope.launch {
@@ -202,34 +206,17 @@ internal class CommissionViewModel(
         }
     }
 
-    /**
-     * Re-fetches commission detail without flashing a Loading state. Called when a
-     * signed URL for a reference attachment or delivered preview returns 401/403
-     * (expired after ~15 min). The existing Success data stays visible until fresh
-     * data arrives, at which point Compose re-renders with new signed URLs.
-     */
     fun refreshDetail(id: Long) {
         viewModelScope.launch {
             _detail.update { it + (id to repository.getCommissionDetail(id)) }
         }
     }
 
-    /**
-     * Re-fetches messages without flashing a Loading state. Called when a signed URL
-     * for a chat image (IMAGE message or DELIVERABLE_CARD) returns 401/403.
-     */
     fun refreshMessages(id: Long) {
         viewModelScope.launch {
             _messages.update { it + (id to repository.getMessages(id)) }
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Chat — REST history (GET/POST .../messages) + live updates over STOMP.
-    // Our own sent message is appended from the REST response immediately;
-    // if the server also echoes it back over the topic, dedup by messageId
-    // in both appenders prevents it showing twice.
-    // -------------------------------------------------------------------------
 
     fun loadMessages(id: Long) {
         viewModelScope.launch {
@@ -238,21 +225,13 @@ internal class CommissionViewModel(
         }
     }
 
-    // The viewModel itself is scoped per-user (viewModel(key = "commission:${user.id}")),
-    // so it outlives the chat dialog. Without tracking this job, every
-    // connectChat() call stacked another collector on chatSocket.incoming that
-    // disconnectChat() never cancelled — they'd pile up across repeated visits.
-    private var chatJob: Job? = null
-
-    /** Call when a commission's chat screen becomes visible. Pair with [disconnectChat] in onDispose. */
     fun connectChat(id: Long) {
         val token = ServiceLocator.userPreferences.getAuthToken() ?: return
         chatSocket.connect(id, token)
         chatJob?.cancel()
         chatJob = viewModelScope.launch {
             chatSocket.incoming.collect { incoming ->
-                if (incoming.commissionId != id) return@collect
-                appendMessage(id, incoming)
+                if (incoming.commissionId == id) appendMessage(id, incoming)
             }
         }
     }
@@ -268,7 +247,6 @@ internal class CommissionViewModel(
         viewModelScope.launch {
             var mediaUrl: String? = null
             if (imageUri != null) {
-                // COMMISSION_CHAT requires targetId = commissionId per AC01.
                 when (val uploaded = mediaRepository.uploadImage(imageUri, purpose = "COMMISSION_CHAT", targetId = id)) {
                     is Resource.Success -> mediaUrl = uploaded.data
                     is Resource.Error -> return@launch
@@ -314,6 +292,7 @@ internal class CommissionViewModel(
             loadCommissions()
         }
     }
+
     fun approveDeliverable(id: Long) {
         viewModelScope.launch {
             _actionResult.value = Resource.Loading
@@ -363,5 +342,7 @@ internal class CommissionViewModel(
         }
     }
 
-    fun consumeActionResult() { _actionResult.value = null }
+    fun consumeActionResult() {
+        _actionResult.value = null
+    }
 }

@@ -15,6 +15,7 @@ import com.carled.app.data.remote.dto.RefreshTokenRequest
 import com.carled.app.data.remote.dto.RegisterRequest
 import com.carled.app.data.remote.dto.ResendVerificationRequest
 import com.carled.app.data.remote.dto.ResetPasswordRequest
+import com.carled.app.data.remote.dto.UpdateProfileRequest
 import com.carled.app.data.remote.dto.UserProfileData
 import com.carled.app.data.remote.dto.VerifyEmailRequest
 import com.carled.app.domain.model.User
@@ -121,12 +122,20 @@ class AuthRepositoryImpl(
             if (response.isSuccessful) {
                 val profile = response.body()?.data
                     ?: return Resource.Error("Phản hồi từ máy chủ trống")
+                // Keep the id the session already established (from the JWT's
+                // `sub` claim at login) rather than switching to
+                // profile.accountId.toString(). Those two aren't guaranteed to
+                // be the same string, and per-user local caches keyed by this
+                // id (e.g. UserPreferences' birth date) would silently stop
+                // resolving if it changed out from under them.
+                val id = _currentUser.value?.id ?: userPreferences.getUserId() ?: profile.accountId.toString()
                 val user = User(
-                    id       = profile.accountId.toString(),
+                    id       = id,
                     email    = profile.email,
                     fullName = profile.name ?: "New User",
                     role     = profile.roles.firstOrNull()?.removePrefix("ROLE_") ?: "",
-                    token    = token
+                    token    = token,
+                    phone    = profile.phone
                 )
                 _currentUser.value = user
                 userPreferences.saveUser(user.id, user.email)
@@ -135,6 +144,41 @@ class AuthRepositoryImpl(
                 Resource.Error(parseErrorBody(response, "Không tải được thông tin tài khoản"))
             }
         } catch (e: CancellationException) { throw e }catch (e: Exception) {
+            Resource.Error(e.localizedMessage ?: "Lỗi kết nối mạng", e)
+        }
+    }
+
+    override suspend fun updateProfile(name: String, phone: String?): Resource<User> {
+        val token = userPreferences.getAuthToken()?.takeIf { it.isNotBlank() }
+            ?: return Resource.Error("Chưa đăng nhập")
+
+        return try {
+            val response = apiService.updateCurrentUserProfile(
+                "Bearer $token",
+                UpdateProfileRequest(name = name, phone = phone)
+            )
+            if (response.isSuccessful) {
+                val profile = response.body()?.data
+                    ?: return Resource.Error("Phản hồi từ máy chủ trống")
+                // Same reasoning as getProfile(): don't let a save silently
+                // re-key the session's id, or per-user local data (birth
+                // date) saved under the old id becomes unreachable.
+                val id = _currentUser.value?.id ?: userPreferences.getUserId() ?: profile.accountId.toString()
+                val user = User(
+                    id       = id,
+                    email    = profile.email,
+                    fullName = profile.name ?: "New User",
+                    role     = profile.roles.firstOrNull()?.removePrefix("ROLE_") ?: "",
+                    token    = token,
+                    phone    = profile.phone
+                )
+                _currentUser.value = user
+                userPreferences.saveUser(user.id, user.email)
+                Resource.Success(user)
+            } else {
+                Resource.Error(parseErrorBody(response, "Không thể cập nhật thông tin tài khoản"))
+            }
+        } catch (e: CancellationException) { throw e } catch (e: Exception) {
             Resource.Error(e.localizedMessage ?: "Lỗi kết nối mạng", e)
         }
     }
@@ -199,7 +243,8 @@ class AuthRepositoryImpl(
                         email    = profile.email.ifBlank { baseUser.email },
                         fullName = profile.name ?: "New User",
                         role     = profile.roles.firstOrNull()?.removePrefix("ROLE_") ?: baseUser.role,
-                        token    = baseUser.token
+                        token    = baseUser.token,
+                        phone    = profile.phone
                     )
                 } ?: baseUser
 

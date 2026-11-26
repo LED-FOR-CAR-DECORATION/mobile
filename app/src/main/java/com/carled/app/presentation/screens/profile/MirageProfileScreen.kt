@@ -38,6 +38,7 @@ fun MirageProfileScreen(
     onOpenPanelControl: () -> Unit,
     onOpenLibraryTab: () -> Unit,
     onOpenAccountSecurity: () -> Unit,
+    onOpenEditProfile: () -> Unit,
     onLogout: () -> Unit
 ) {
     val connectionState by control.connectionState.collectAsState()
@@ -52,18 +53,17 @@ fun MirageProfileScreen(
             .fillMaxSize()
             .background(MirageBackground)
             .systemBarsPadding()
-            .padding(8.dp)
     ) {
         WindowFrame(
-            title = "My profile",
+            title = "Hồ sơ của tôi",
             onClose = back,
             modifier = Modifier.fillMaxSize()
         ) {
-            DeviceSection(title = "Account info") {
+            DeviceSection(title = "Thông tin tài khoản cá nhân") {
                 AccountInfoRow(user)
             }
 
-            DeviceSection(title = "My gallery", onNavigate = onOpenLibraryTab) {
+            DeviceSection(title = "Kho ảnh", onNavigate = onOpenLibraryTab) {
                 if (drafts.isEmpty()) {
                     EmptyRow("Chưa có thiết kế nào. Vẽ DIY để thêm vào đây.")
                 } else {
@@ -94,7 +94,7 @@ fun MirageProfileScreen(
                 }
             }
 
-            DeviceSection(title = "Active panels", onNavigate = onOpenControlTab) {
+            DeviceSection(title = "Thiết bị đã kết nối", onNavigate = onOpenControlTab) {
                 if (device == null) {
                     EmptyRow(
                         if (connectionState is ConnectionState.Connecting) "Đang kết nối…"
@@ -113,9 +113,9 @@ fun MirageProfileScreen(
 
             HardMenuList(
                 items = listOf(
-                    HardMenuItem("Account Security") { onOpenAccountSecurity() },
-                    HardMenuItem("Settings"),
-                    HardMenuItem("Logout") { confirmLogout = true }
+                    HardMenuItem("Bảo mật tài khoản") { onOpenAccountSecurity() },
+                    HardMenuItem("Chỉnh sửa thông tin cá nhân") { onOpenEditProfile() },
+                    HardMenuItem("Đăng xuất") { confirmLogout = true }
                 )
             )
         }
@@ -161,7 +161,6 @@ private fun AccountInfoRow(user: User?) {
                 fontWeight = FontWeight.ExtraBold
             )
             Text(user?.email?.ifBlank { "Email" } ?: "Email", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Text("Edit", color = GreenDark, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

@@ -1,11 +1,11 @@
 package com.carled.app.presentation.navigation
 
-import com.carled.app.presentation.screens.marquee.MirageMarqueeScreen
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -19,17 +19,18 @@ import com.carled.app.core.common.Resource
 import com.carled.app.core.di.ServiceLocator
 import com.carled.app.data.local.TextProfileStore
 import com.carled.app.domain.model.CustomerOwnedCharacterResponse
-import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.model.User
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.presentation.screens.auth.*
 import com.carled.app.presentation.screens.canvas.*
 import com.carled.app.presentation.screens.claim.ClaimDeviceScreen
 import com.carled.app.presentation.screens.claim.ClaimDeviceViewModel
 import com.carled.app.presentation.screens.control.*
-import com.carled.app.presentation.screens.main.MirageHomeScreen
+import com.carled.app.presentation.screens.main.HOME_TAB_COMMISSION
+import com.carled.app.presentation.screens.main.HOME_TAB_CONTROL
 import com.carled.app.presentation.screens.main.HOME_TAB_HOME
 import com.carled.app.presentation.screens.main.HOME_TAB_LIBRARY
-import com.carled.app.presentation.screens.main.HOME_TAB_COMMISSION
+import com.carled.app.presentation.screens.main.MirageHomeScreen
 import com.carled.app.presentation.screens.marquee.*
 import com.carled.app.presentation.screens.scan.*
 import com.carled.app.presentation.screens.upload.*
@@ -68,11 +69,22 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
         )
     }
 
+    var homeTab by rememberSaveable { mutableIntStateOf(HOME_TAB_HOME) }
+
     val goBack: () -> Unit = { navController.popBackStack() }
     val goScan: () -> Unit = { navController.navigate(NavRoute.Scan.route) }
+    val goConnectDevice: () -> Unit = {
+        homeTab = HOME_TAB_CONTROL
+        if (navController.currentDestination?.route != NavRoute.Main.route) {
+            navController.navigate(NavRoute.Main.route) {
+                launchSingleTop = true
+            }
+        }
+    }
     val logout: () -> Unit = {
         scope.launch {
             ServiceLocator.logoutUseCase()
+            homeTab = HOME_TAB_HOME
             navController.navigate(NavRoute.Login.route) { popUpTo(0) { inclusive = true } }
         }
     }
@@ -83,6 +95,7 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
             wasLoggedIn = true
         } else if (wasLoggedIn) {
             wasLoggedIn = false
+            homeTab = HOME_TAB_HOME
             navController.navigate(NavRoute.Login.route) { popUpTo(0) { inclusive = true } }
         }
     }
@@ -105,6 +118,7 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                 viewModel = vm,
                 onLoginSuccess = {
                     ownedDevices.onUserLoggedIn()
+                    homeTab = HOME_TAB_HOME
                     navController.navigate(NavRoute.Main.route) {
                         popUpTo(NavRoute.Login.route) { inclusive = true }
                         launchSingleTop = true
@@ -113,16 +127,49 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
             )
         }
         composable(NavRoute.Main.route) {
-            HomeRoute(navController, control, scanner, ownedDevices, user, marquee, initialTab = HOME_TAB_HOME, onLogout = logout)
+            HomeRoute(
+                navController = navController,
+                control = control,
+                scanner = scanner,
+                ownedDevices = ownedDevices,
+                user = user,
+                marquee = marquee,
+                tab = homeTab,
+                onTabChange = { homeTab = it },
+                onLogout = logout,
+                onOpenDeviceTab = goConnectDevice
+            )
         }
         composable(NavRoute.Library.route) {
-            HomeRoute(navController, control, scanner, ownedDevices, user, marquee, initialTab = HOME_TAB_LIBRARY, onLogout = logout)
+            HomeRoute(
+                navController = navController,
+                control = control,
+                scanner = scanner,
+                ownedDevices = ownedDevices,
+                user = user,
+                marquee = marquee,
+                tab = HOME_TAB_LIBRARY,
+                onTabChange = { homeTab = it },
+                onLogout = logout,
+                onOpenDeviceTab = goConnectDevice
+            )
         }
         composable(NavRoute.Commission.route) {
-            HomeRoute(navController, control, scanner, ownedDevices, user, marquee, initialTab = HOME_TAB_COMMISSION, onLogout = logout)
+            HomeRoute(
+                navController = navController,
+                control = control,
+                scanner = scanner,
+                ownedDevices = ownedDevices,
+                user = user,
+                marquee = marquee,
+                tab = HOME_TAB_COMMISSION,
+                onTabChange = { homeTab = it },
+                onLogout = logout,
+                onOpenDeviceTab = goConnectDevice
+            )
         }
         composable(NavRoute.Scan.route) { MirageScanScreen(scanner) { goBack() } }
-        composable(NavRoute.Effect.route) { MirageEffectScreen(control, goBack, goScan) }
+        composable(NavRoute.Effect.route) { MirageEffectScreen(control, goBack, goConnectDevice) }
         composable(NavRoute.Studio.route) { entry ->
             val id = entry.arguments?.getString("draft")?.takeIf { it.isNotBlank() }
             val vm: StudioViewModel = viewModel(
@@ -141,10 +188,6 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                 RouteMessage("Đang tải tài khoản…")
             } else {
                 val characterIdArg = entry.arguments?.getString("id")
-                // Looks the id up against the real backend inventory (CharacterRepository),
-                // not MockCharacterInventory — the id coming from ContentLibraryScreen is a
-                // real CustomerOwnedCharacterResponse.characterId (Long), which never matched
-                // MockCharacterInventory's hardcoded string ids.
                 var characterState by remember(characterIdArg) {
                     mutableStateOf<Resource<CustomerOwnedCharacterResponse>>(Resource.Loading)
                 }
@@ -184,7 +227,7 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
         }
         composable(NavRoute.PanelControl.route) { entry ->
             val id = entry.arguments?.getString("id")
-            PanelControlScreen(control, id, goBack, goScan)
+            PanelControlScreen(control, id, goBack, goConnectDevice)
         }
         composable(NavRoute.ClaimDevice.route) { entry ->
             val vm: ClaimDeviceViewModel = viewModel(
@@ -235,8 +278,10 @@ private fun HomeRoute(
     ownedDevices: OwnedDevicesViewModel,
     user: User?,
     marquee: MarqueeViewModel?,
-    initialTab: Int,
-    onLogout: () -> Unit
+    tab: Int,
+    onTabChange: (Int) -> Unit,
+    onLogout: () -> Unit,
+    onOpenDeviceTab: () -> Unit
 ) {
     val controlState by control.uiState.collectAsState()
     val connected = controlState.connectionState is ConnectionState.Connected
@@ -252,7 +297,7 @@ private fun HomeRoute(
             if (connected) {
                 navController.navigate(NavRoute.PanelControl.create("current"))
             } else {
-                navController.navigate(NavRoute.Scan.route)
+                onOpenDeviceTab()
             }
         },
         openCanvas = { navController.navigate(NavRoute.Studio.create(it)) },
@@ -262,7 +307,8 @@ private fun HomeRoute(
         openEffect = { navController.navigate(NavRoute.Effect.route) },
         openClaimDevice = { navController.navigate(NavRoute.ClaimDevice.route) },
         openDeviceInfo = { id -> navController.navigate(NavRoute.DeviceInfo.create(id)) },
-        initialTab = initialTab
+        selectedTab = tab,
+        onTabSelected = onTabChange
     )
 }
 

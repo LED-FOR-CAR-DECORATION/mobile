@@ -22,11 +22,11 @@ import com.carled.app.R
 import com.carled.app.presentation.theme.*
 
 private enum class NavTab(val label: String, @DrawableRes val icon: Int) {
-    HOME("Home", R.drawable.ic_home),
-    GALLERY("Gallery", R.drawable.ic_gallery),
-    DEVICES("My Devices", R.drawable.ic_settings),
+    HOME("Homepage", R.drawable.ic_home),
+    GALLERY("Kho ảnh", R.drawable.ic_gallery),
+    DEVICES("Quản lý thiết bị", R.drawable.ic_settings),
     COMMISSION("Commission", R.drawable.ic_com),
-    PROFILE("Profile", R.drawable.ic_profile)
+    PROFILE("Hồ sơ", R.drawable.ic_profile)
 }
 
 private const val COMMISSION_ASPECT_RATIO = 52f / 28f
@@ -60,13 +60,14 @@ fun HardNavBar(
                 .background(GreenLight, CARD_CORNER)
                 .border(HardStyle.Border, Ink, CARD_CORNER)
                 .padding(horizontal = sizing.horizontalPadding, vertical = sizing.verticalPadding),
-            horizontalArrangement = Arrangement.SpaceAround
+            horizontalArrangement = Arrangement.spacedBy(sizing.rowSpacing),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             NavTab.entries.forEachIndexed { index, tab ->
                 val selected = selectedIndex == index
                 val iconModifier = if (tab == NavTab.COMMISSION) {
                     Modifier
-                        .width(sizing.iconSize * COMMISSION_ASPECT_RATIO)
+                        .width((sizing.iconSize * COMMISSION_ASPECT_RATIO).coerceAtMost(sizing.iconBox - 4.dp))
                         .height(sizing.iconSize)
                 } else {
                     Modifier.size(sizing.iconSize)
@@ -106,6 +107,7 @@ fun HardNavBar(
                         fontSize = sizing.labelSize,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
+                        softWrap = false,
                         overflow = TextOverflow.Ellipsis
                     )
                 }

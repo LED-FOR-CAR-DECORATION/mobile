@@ -48,6 +48,7 @@ class UserPreferences(context: Context) {
         private const val KEY_LAST_DEVICE_MAC = "last_device_mac"
         private const val KEY_CACHED_DEVICES  = "cached_devices_json"
         private const val PREFIX_CACHED_DEVICE_DETAIL = "cached_device_detail_"
+        private const val PREFIX_BIRTH_DATE = "birth_date_"
     }
 
     // --- Device list cache ---
@@ -94,6 +95,17 @@ class UserPreferences(context: Context) {
 
     fun getUserEmail(): String? = prefs.getString(KEY_USER_EMAIL, null)
     fun getUserId(): String?    = prefs.getString(KEY_USER_ID, null)
+
+    // --- Local-only profile fields ---
+    // PUT /api/users/me only accepts name/phone/avatar — there's no birthDate
+    // field on the backend at all, so it's kept here instead, per user id,
+    // until the server has somewhere to put it.
+
+    fun saveBirthDate(userId: String, birthDate: String) {
+        prefs.edit().putString("$PREFIX_BIRTH_DATE$userId", birthDate).apply()
+    }
+
+    fun getBirthDate(userId: String): String? = prefs.getString("$PREFIX_BIRTH_DATE$userId", null)
 
     // --- BLE ---
 

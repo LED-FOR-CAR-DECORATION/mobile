@@ -1,14 +1,26 @@
 package com.carled.app.presentation.screens.commission
 
+import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.carled.app.core.common.Resource
+import com.carled.app.domain.model.User
 import com.carled.app.domain.model.commission.CommissionPriceCalculator
 import com.carled.app.domain.model.commission.ModifierType
 import com.carled.app.domain.model.commission.PricingOption
@@ -22,11 +34,163 @@ import com.carled.app.presentation.components.flatSurface
 import com.carled.app.presentation.theme.Cream
 import com.carled.app.presentation.theme.GreenLight
 import com.carled.app.presentation.theme.Ink
-import java.text.NumberFormat
-import java.util.Locale
 
-private fun formatVndAmount(amount: Long) =
-    NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN")).format(amount) + " VND"
+@Composable
+internal fun CommissionForm(
+    user: User,
+    model: CommissionViewModel,
+    onSubmit: (Long, String?) -> Unit
+) {
+    val draft = model.draft
+    val pricingState by model.pricing.collectAsState()
+    val submissionState by model.submission.collectAsState()
+    var editingBrief by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = editingBrief) { editingBrief = false }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) model.addReference(uri, MAX_REFERENCES)
+    }
+
+    when (val state = pricingState) {
+        is Resource.Loading -> CommissionPanel("Form đăng ký request commission.") {
+            CircularProgressIndicator(color = Ink)
+            Text("Đang tải bảng giá…", color = Ink)
+        }
+        is Resource.Error -> CommissionPanel("Form đăng ký request commission.") {
+            Text(state.message, color = Ink)
+            MirageButton("Thử lại", model::loadPricing)
+        }
+        is Resource.Success -> {
+            val catalog = state.data
+            val selectedTier = catalog.tiers.firstOrNull { it.tierCode == draft.selectedTierCode }
+            val visibleRules = remember(catalog.rules, draft.selections) {
+                CommissionPriceCalculator.visibleRulesInOrder(catalog.rules, draft.selections)
+            }
+            val priceResult = remember(catalog.rules, draft.selections) {
+                CommissionPriceCalculator.calculate(catalog.rules, draft.selections)
+            }
+            val selectedOptionIds = remember(catalog.rules, draft.selections) {
+                catalog.rules.flatMap { rule ->
+                    rule.options.filter { it.optionCode in draft.selections[rule.ruleKey]?.selectedOptionCodes.orEmpty() }
+                }.map { it.optionId }.toSet()
+            }
+
+            if (!editingBrief) {
+                CommissionPanel("Dịch vụ thiết kế chuyên nghiệp") {
+                    Text("Form tạo request thiết kế commission", color = Ink, style = MaterialTheme.typography.labelLarge)
+                    visibleRules.forEach { rule ->
+                        PricingRuleRow(
+                            rule = rule,
+                            selection = draft.selections[rule.ruleKey],
+                            onSelectSingle = { code -> model.selectSingle(rule.ruleKey, code) },
+                            onToggleMulti = { code -> model.toggleMulti(rule.ruleKey, code) },
+                            onQuantityChange = { qty -> model.setQuantity(rule.ruleKey, qty) },
+                            onTextChange = { text -> model.setText(rule.ruleKey, text) }
+                        )
+                    }
+                    Text("Chọn gói dịch vụ", color = Ink, style = MaterialTheme.typography.labelLarge)
+                    catalog.tiers.sortedBy { it.displayOrder }.forEach { tier ->
+                        val eligible = tier.triggerOptionIds.isEmpty() || tier.triggerOptionIds.any { it in selectedOptionIds }
+                        TierCard(
+                            tier = tier,
+                            selected = draft.selectedTierCode == tier.tierCode,
+                            liveCustomTotal = if (tier.isCustom) priceResult.total else null,
+                            eligible = eligible,
+                            onSelect = { model.selectTier(tier.tierCode) }
+                        )
+                    }
+                    val canContinue = selectedTier != null &&
+                            (!selectedTier.isCustom || priceResult.missingRequiredRuleKeys.isEmpty())
+                    MirageButton(
+                        "Tiếp tục đến mô tả chi tiết",
+                        { editingBrief = true },
+                        Modifier.fillMaxWidth(),
+                        enabled = canContinue
+                    )
+                }
+            } else {
+                val priceVnd = if (selectedTier?.isCustom == true) priceResult.total else selectedTier?.basePrice
+                CommissionPanel("Design brief") {
+                    Text(
+                        "${selectedTier?.tierName.orEmpty()} · ${priceVnd?.let { formatVnd(it.toDouble()) }.orEmpty()}",
+                        color = Ink
+                    )
+                    TextButton(onClick = { editingBrief = false }) { Text("Change design", color = Ink) }
+                    CommissionField(user.fullName?.takeIf { it.isNotBlank() } ?: user.id, {}, "Username (user ID)", readOnly = true)
+                    CommissionField(draft.title, model::updateTitle, "Title")
+                    CommissionField(draft.description, model::updateDescription, "Description", multiline = true)
+
+                    Text("Reference images (optional, up to $MAX_REFERENCES)", style = MaterialTheme.typography.labelLarge, color = Ink)
+                    ReferenceImageGrid(
+                        references = draft.references,
+                        onAddClick = { picker.launch(ImagePickerRequest) },
+                        onRemoveClick = model::removeReference
+                    )
+
+                    MirageButton(
+                        when (submissionState) {
+                            is Resource.Loading -> "Đang gửi…"
+                            else -> "Submit request"
+                        },
+                        model::submit,
+                        Modifier.fillMaxWidth(),
+                        enabled = draft.isBriefValid && submissionState !is Resource.Loading,
+                        secondary = true
+                    )
+                    (submissionState as? Resource.Error)?.let { err ->
+                        Text(err.message, color = MaterialTheme.colorScheme.error)
+                    }
+                    LaunchedEffect(submissionState) {
+                        val success = submissionState as? Resource.Success ?: return@LaunchedEffect
+                        editingBrief = false
+                        onSubmit(success.data.commissionId, success.data.activePaymentCode)
+                        model.consumeSubmission()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReferenceImageGrid(
+    references: List<Uri>,
+    onAddClick: () -> Unit,
+    onRemoveClick: (Uri) -> Unit
+) {
+    val slots = references.map<Uri, Uri?> { it } + List(minOf(3, MAX_REFERENCES - references.size)) { null }
+    slots.chunked(3).forEach { row ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            row.forEach { uri ->
+                val slotModifier = Modifier
+                    .weight(1f)
+                    .aspectRatio(ImagePreviewAspectRatio)
+                    .background(Cream)
+                    .border(1.dp, Ink)
+                if (uri == null) {
+                    Box(
+                        slotModifier.clickable(role = Role.Button, onClick = onAddClick),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.NoteAdd, "Add reference image", tint = Ink, modifier = Modifier.size(34.dp))
+                    }
+                } else {
+                    Box(slotModifier) {
+                        LocalImagePreview(uri, "Reference image", Modifier.fillMaxSize())
+                        TextButton(
+                            onClick = { onRemoveClick(uri) },
+                            modifier = Modifier.align(Alignment.TopEnd).size(44.dp),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text("×", color = Ink, modifier = Modifier.background(Cream))
+                        }
+                    }
+                }
+            }
+            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+        }
+    }
+}
 
 /** One tier card: a fixed-price preset, or the CUSTOM tier priced live from [liveCustomTotal]. */
 @Composable
@@ -92,7 +256,10 @@ internal fun PricingRuleRow(
     onTextChange: (String) -> Unit
 ) {
     Column(
-        Modifier.fillMaxWidth().flatSurface(color = Cream).padding(12.dp),
+        Modifier
+            .fillMaxWidth()
+            .flatSurface(color = Cream)
+            .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(rule.configName + if (rule.isRequired) " *" else "", color = Ink, fontWeight = FontWeight.Bold)

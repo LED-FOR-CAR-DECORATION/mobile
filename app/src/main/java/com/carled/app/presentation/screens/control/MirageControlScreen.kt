@@ -30,7 +30,6 @@ fun MirageControlScreen(
             .fillMaxSize()
             .background(MirageBackground)
             .systemBarsPadding()
-            .padding(8.dp)
     ) {
         WindowFrame(
             title = "Thiết bị của tôi",
@@ -43,7 +42,7 @@ fun MirageControlScreen(
                     .padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                DeviceSection(title = "Owned devices", onAdd = openClaimDevice) {
+                DeviceSection(title = "Quản lý thiết bị", onAdd = openClaimDevice) {
                     when (val state = devicesState) {
                         is OwnedDevicesUiState.Loading -> EmptyRow("Đang tải danh sách thiết bị…")
                         is OwnedDevicesUiState.Error -> EmptyRow(state.message)
@@ -107,7 +106,7 @@ private fun OwnedDeviceRow(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "Device info",
+                text = "Điều khiển",
                 color = Ink,
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp

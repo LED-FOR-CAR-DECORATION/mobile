@@ -33,6 +33,7 @@ import com.carled.app.domain.usecase.auth.LogoutUseCase
 import com.carled.app.domain.usecase.auth.RegisterUseCase
 import com.carled.app.domain.usecase.auth.ResendVerificationUseCase
 import com.carled.app.domain.usecase.auth.ResetPasswordUseCase
+import com.carled.app.domain.usecase.auth.UpdateProfileUseCase
 import com.carled.app.domain.usecase.auth.VerifyEmailUseCase
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
@@ -267,6 +268,7 @@ object ServiceLocator {
     val googleAuthUseCase: GoogleAuthUseCase by lazy { GoogleAuthUseCase(authRepository) }
     val forgotPasswordUseCase: ForgotPasswordUseCase by lazy { ForgotPasswordUseCase(authRepository) }
     val resetPasswordUseCase: ResetPasswordUseCase by lazy { ResetPasswordUseCase(authRepository) }
+    val updateProfileUseCase: UpdateProfileUseCase by lazy { UpdateProfileUseCase(authRepository) }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

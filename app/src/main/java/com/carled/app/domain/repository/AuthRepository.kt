@@ -46,6 +46,14 @@ interface AuthRepository {
      */
     suspend fun getProfile(): Resource<User>
 
+    /**
+     * Updates name/phone via PUT /api/users/me and refreshes getCurrentUser()'s
+     * emitted value. Email, credentials and roles cannot be changed this way,
+     * and [name] is required by the endpoint on every call even if only
+     * [phone] actually changed.
+     */
+    suspend fun updateProfile(name: String, phone: String?): Resource<User>
+
     /** Invalidates the session on the server and clears local credentials. */
     suspend fun logout(): Resource<Unit>
 

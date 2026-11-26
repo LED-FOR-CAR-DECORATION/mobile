@@ -117,7 +117,6 @@ fun DeviceInfoScreen(
             .fillMaxSize()
             .background(MirageBackground)
             .systemBarsPadding()
-            .padding(8.dp)
     ) {
         WindowFrame(title = "Thông tin thiết bị", onClose = back, modifier = Modifier.fillMaxSize()) {
             if (deviceName == null) {
@@ -127,7 +126,7 @@ fun DeviceInfoScreen(
                 )
             } else {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Connection", color = Ink, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Kết nối với thiết bị:", color = Ink, fontWeight = FontWeight.Bold, fontSize = 16.sp)
 
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Box(Modifier.flatSurface(color = Cream).padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -168,7 +167,7 @@ fun DeviceInfoScreen(
                             modifier = Modifier.fillMaxWidth().height(56.dp)
                         )
                         else -> HardButton(
-                            text = "Connect to device",
+                            text = "Kết nối với thiết bị",
                             onClick = {
                                 val granted = blePermissions.all {
                                     ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
@@ -196,11 +195,11 @@ fun DeviceInfoScreen(
                     }
                 }
 
-                DeviceSection(title = "Firmware") {
+                DeviceSection(title = "Firmware thiết bị") {
                     firmwareVm?.let { FirmwareUpdateSection(it, connectedToThis) }
                 }
 
-                DeviceSection(title = "Device info") {
+                DeviceSection(title = "Thông tin chi tiết thiết bị") {
                     Row(
                         Modifier
                             .fillMaxWidth()

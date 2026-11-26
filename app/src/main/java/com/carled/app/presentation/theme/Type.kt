@@ -8,55 +8,47 @@ import androidx.compose.ui.text.font.Font
 import com.carled.app.R
 import androidx.compose.ui.unit.sp
 
-private val Inter = FontFamily(
-    Font(R.font.inter, FontWeight.Normal),
-    Font(R.font.inter, FontWeight.Medium),
-    Font(R.font.inter, FontWeight.SemiBold),
-    Font(R.font.inter, FontWeight.Bold)
+private val plexsan = FontFamily(
+    Font(R.font.plexsanthin, FontWeight.Thin),
+    Font(R.font.plexsanextralight, FontWeight.ExtraLight),
+    Font(R.font.plexsanlight, FontWeight.Light),
+    Font(R.font.plexsanregular, FontWeight.Normal),
+    Font(R.font.plexsanmedium, FontWeight.Medium),
+    Font(R.font.plexsansemibold, FontWeight.SemiBold),
+    Font(R.font.plexsanbold, FontWeight.Bold)
 )
-
-private val smashSans = FontFamily(
-Font(R.font.smashsans, FontWeight.Normal)
-)
-private val smashSansTurbo = FontFamily(
-    Font(R.font.smashsansturbo, FontWeight.Normal)
-)
-private val smashSansMeta = FontFamily(
-    Font(R.font.smashsansmeta, FontWeight.Normal)
-)
-
 
 val Typography = Typography(
-    headlineMedium = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp),
-    headlineSmall = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Bold, fontSize = 24.sp, lineHeight = 32.sp),
+    headlineMedium = TextStyle(fontFamily = plexsan, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp),
+    headlineSmall = TextStyle(fontFamily = plexsan, fontWeight = FontWeight.Bold, fontSize = 24.sp, lineHeight = 32.sp),
     titleLarge = TextStyle(
-        fontFamily = Inter,
-        fontWeight = FontWeight.Bold,
+        fontFamily = plexsan,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 22.sp,
         lineHeight = 28.sp,
         letterSpacing = 0.sp
     ),
     titleMedium = TextStyle(
-        fontFamily = Inter,
-        fontWeight = FontWeight.SemiBold,
+        fontFamily = plexsan,
+        fontWeight = FontWeight.Medium,
         fontSize = 18.sp,
         lineHeight = 24.sp
     ),
     bodyLarge = TextStyle(
-        fontFamily = Inter,
+        fontFamily = plexsan,
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp,
         letterSpacing = 0.5.sp
     ),
     bodyMedium = TextStyle(
-        fontFamily = Inter,
+        fontFamily = plexsan,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp
     ),
     labelSmall = TextStyle(
-        fontFamily = Inter,
+        fontFamily = plexsan,
         fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
         lineHeight = 16.sp,

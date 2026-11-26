@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-val stagingApiUrl = "https://dev-api.lumintra.shop/"
+val stagingApiUrl = "http://10.0.2.2:8080/"
 val releaseApiUrl = providers.gradleProperty("releaseApiUrl").getOrElse(stagingApiUrl).trimEnd('/') + "/"
 
 android {

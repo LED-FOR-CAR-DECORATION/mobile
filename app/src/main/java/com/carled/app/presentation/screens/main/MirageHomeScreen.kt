@@ -2,21 +2,17 @@ package com.carled.app.presentation.screens.main
 
 import androidx.compose.foundation.Image
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -24,6 +20,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -34,10 +31,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.carled.app.R
@@ -49,7 +49,6 @@ import com.carled.app.presentation.components.DeviceSection
 import com.carled.app.presentation.components.EmptyRow
 import com.carled.app.presentation.components.HardNavBar
 import com.carled.app.presentation.components.MirageBackground
-import com.carled.app.presentation.components.MirageBar
 import com.carled.app.presentation.components.MirageMuted
 import com.carled.app.presentation.components.WindowFrame
 import com.carled.app.presentation.components.flatSurface
@@ -62,11 +61,12 @@ import com.carled.app.presentation.screens.marquee.MarqueeViewModel
 import com.carled.app.presentation.screens.marquee.TextProfilesState
 import com.carled.app.core.di.ServiceLocator
 import com.carled.app.presentation.screens.profile.ChangePasswordViewModel
+import com.carled.app.presentation.screens.profile.EditProfileViewModel
 import com.carled.app.presentation.screens.profile.MirageChangePasswordScreen
+import com.carled.app.presentation.screens.profile.MirageEditProfileScreen
 import com.carled.app.presentation.screens.profile.MirageProfileScreen
 import com.carled.app.presentation.screens.scan.ScanViewModel
 import com.carled.app.presentation.theme.Cream
-import com.carled.app.presentation.theme.Green
 import com.carled.app.presentation.theme.Ink
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,12 +95,22 @@ fun MirageHomeScreen(
     openEditProfile: () -> Unit = {}, // kept — this is the USER/account "Edit" link below, unrelated to letter profiles
     openClaimDevice: () -> Unit = {},
     openDeviceInfo: (String) -> Unit = {},
-    initialTab: Int = HOME_TAB_HOME
+    initialTab: Int = HOME_TAB_HOME,
+    selectedTab: Int? = null,
+    onTabSelected: ((Int) -> Unit)? = null
 ) {
-    var tab by rememberSaveable { mutableIntStateOf(initialTab) }
-    BackHandler(enabled = tab == HOME_TAB_COMMISSION) { tab = HOME_TAB_HOME }
+    var localTab by rememberSaveable { mutableIntStateOf(initialTab) }
+    val tab = selectedTab ?: localTab
+    val setTab: (Int) -> Unit = { newTab ->
+        localTab = newTab
+        onTabSelected?.invoke(newTab)
+    }
+
+    BackHandler(enabled = tab == HOME_TAB_COMMISSION) { setTab(HOME_TAB_HOME) }
     var showChangePassword by remember { mutableStateOf(false) }
     BackHandler(enabled = showChangePassword) { showChangePassword = false }
+    var showEditProfile by remember { mutableStateOf(false) }
+    BackHandler(enabled = showEditProfile) { showEditProfile = false }
     var confirmDisconnect by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
@@ -113,7 +123,6 @@ fun MirageHomeScreen(
     val device = connectionState as? ConnectionState.Connected
     val alias = device?.deviceName ?: "CarLED-Ambient"
     var draftName by remember { mutableStateOf(alias) }
-    val titles = listOf("Trang chủ", "Nội dung LED", "Điều khiển", "Commission", "Tài khoản")
 
     // null only if user/email isn't loaded yet — Account Security guards against
     // that below rather than crash-constructing this with a blank email.
@@ -127,59 +136,51 @@ fun MirageHomeScreen(
         }
     }
 
+    // Keyed on user?.id, NOT on user itself. User is a data class, so
+    // remember(user) re-keys on ANY field change — including fullName/phone,
+    // which change on every successful save. That was recreating this
+    // ViewModel right after Save succeeded, discarding the one that just
+    // wrote birthDate and re-reading userPreferences.getBirthDate(user.id)
+    // from scratch into a fresh instance (same id, so same key — this just
+    // looked like data loss, since onSuccess had already updated the old
+    // instance's state, which was then thrown away).
+    val editProfileViewModel: EditProfileViewModel? = remember(user?.id) {
+        user?.let {
+            EditProfileViewModel(
+                user = it,
+                updateProfileUseCase = ServiceLocator.updateProfileUseCase,
+                userPreferences = ServiceLocator.userPreferences
+            )
+        }
+    }
+    // A cold start seeds `user` with buildRestoredUser()'s placeholder
+    // (blank fullName, null phone) before the real profile has loaded; since
+    // editProfileViewModel above is now only rebuilt when the id itself
+    // changes, it would otherwise be stuck showing that placeholder forever.
+    // This pushes every later `user` update (the real profile arriving, or
+    // this same screen's own save) into the existing ViewModel instead.
+    LaunchedEffect(user) {
+        user?.let { editProfileViewModel?.syncFromUpstream(it) }
+    }
+
     val profilesFlow = remember(marquee) { marquee?.profiles ?: MutableStateFlow(TextProfilesState()).asStateFlow() }
     val profilesState by profilesFlow.collectAsState()
 
-    Scaffold(topBar = {
-        if (tab == HOME_TAB_LIBRARY) {
-            MirageBar(titles[tab])
-        }
-    }, bottomBar = {
-        HardNavBar(
-            selectedIndex = tab,
-            onTabSelected = { tab = it },
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        )
-    }, containerColor = MirageBackground) { padding ->
+    Scaffold(
+        bottomBar = {
+            HardNavBar(
+                selectedIndex = tab,
+                onTabSelected = setTab,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        },
+        containerColor = MirageBackground
+    ) { padding ->
         when (tab) {
             HOME_TAB_HOME -> {
-                Box(Modifier.padding(padding).fillMaxSize().padding(8.dp)) {
+                Box(Modifier.padding(padding).fillMaxSize()) {
                     WindowFrame(title = "Home", modifier = Modifier.fillMaxSize()) {
-                        // Welcome back — ic_user remains 24.dp as requested
-                        DeviceSection(title = "Welcome back, ${user?.fullName ?: "New User"}!") {
-                            Row(
-                                Modifier.fillMaxWidth().flatSurface(color = Cream).padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    Modifier.size(48.dp).clip(CircleShape).background(Green),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Image(
-                                        painter = painterResource(R.drawable.ic_user),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(user?.fullName ?: "New User", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
-                                    if (!user?.email.isNullOrBlank()) {
-                                        Text("Email: ${user?.email}", color = MirageMuted, fontSize = 13.sp)
-                                    }
-                                    Text(
-                                        "Edit",
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.clickable(onClick = openEditProfile)
-                                    )
-                                }
-                            }
-                        }
-
-
-                        DeviceSection(title = "Quick start") {
+                        DeviceSection(title = "Shortcut các chức năng:") {
                             Row(
                                 Modifier.fillMaxWidth().flatSurface(color = Cream)
                                     .clickable(onClick = openUpload).padding(12.dp),
@@ -189,7 +190,25 @@ fun MirageHomeScreen(
                                     Image(painterResource(R.drawable.ic_image_upload), contentDescription = null, modifier = Modifier.size(48.dp))
                                 }
                                 Spacer(Modifier.width(12.dp))
-                                Text("Project image from your personal collection.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                Text("Tải lên/Chiếu ảnh từ kho ảnh cá nhân.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                ChevronGlyph()
+                            }
+                            Row(
+                                Modifier.fillMaxWidth().flatSurface(color = Cream)
+                                    .clickable(onClick = openEffect).padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(Modifier.width(78.dp).height(66.dp), contentAlignment = Alignment.Center) {
+                                    val ledScreenBitmap = ImageBitmap.imageResource(R.drawable.ic_pixelperfect_ledscreen)
+                                    Image(
+                                        painter = BitmapPainter(ledScreenBitmap, filterQuality = FilterQuality.None),
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Text("Màu đơn sắc & hiệu ứng LED.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
                                 ChevronGlyph()
                             }
                             Row(
@@ -201,12 +220,12 @@ fun MirageHomeScreen(
                                     Image(painterResource(R.drawable.ic_qrcode), contentDescription = null, modifier = Modifier.size(48.dp))
                                 }
                                 Spacer(Modifier.width(12.dp))
-                                Text("Bind new device with account with QRcode.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                Text("Kích hoạt thiết bị qua mã QR.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
                                 ChevronGlyph()
                             }
                             Row(
                                 Modifier.fillMaxWidth().flatSurface(color = Cream)
-                                    .clickable { tab = HOME_TAB_COMMISSION }.padding(12.dp),
+                                    .clickable { setTab(HOME_TAB_COMMISSION) }.padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
@@ -217,7 +236,7 @@ fun MirageHomeScreen(
                                     )
                                 }
                                 Spacer(Modifier.width(12.dp))
-                                Text("Commission a custom LED design from our team.", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                Text("Dịch vụ Commission thiết kế riêng. ", color = Ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
                                 ChevronGlyph()
                             }
                         }
@@ -225,7 +244,7 @@ fun MirageHomeScreen(
                         // Saved letter profile — now real, cache-backed data from
                         // MarqueeViewModel.profiles (TextProfileRepository), capped
                         // at profilesState.plan.limit (3, per TextProfilePlan.BASIC).
-                        DeviceSection(title = "Saved letter profile  ${profilesState.entries.size}/${profilesState.plan.limit}") {
+                        DeviceSection(title = "Profile chữ cá nhân  ${profilesState.entries.size}/${profilesState.plan.limit}") {
                             when {
                                 marquee == null -> EmptyRow("Đăng nhập để xem profile đã lưu.")
                                 profilesState.entries.isEmpty() -> EmptyRow("Chưa có bản lưu nào. Tạo profile mới bên dưới.")
@@ -272,7 +291,7 @@ fun MirageHomeScreen(
                 }
             }
             HOME_TAB_LIBRARY -> {
-                Box(Modifier.padding(padding).fillMaxSize().padding(16.dp)) {
+                Box(Modifier.padding(padding).fillMaxSize()) {
                     ContentLibraryScreen(user?.id ?: "", openCanvas)
                 }
             }
@@ -281,7 +300,7 @@ fun MirageHomeScreen(
                     MirageControlScreen(
                         vm = control,
                         ownedDevices = ownedDevices,
-                        back = { tab = HOME_TAB_HOME },
+                        back = { setTab(HOME_TAB_HOME) },
                         scanner = openScan,
                         openClaimDevice = openClaimDevice,
                         openDeviceInfo = openDeviceInfo
@@ -290,28 +309,44 @@ fun MirageHomeScreen(
             }
             HOME_TAB_ACCOUNT -> {
                 Box(Modifier.padding(padding).fillMaxSize()) {
-                    if (showChangePassword && changePasswordViewModel != null) {
-                        MirageChangePasswordScreen(
-                            vm = changePasswordViewModel,
-                            back = { showChangePassword = false }
-                        )
-                    } else {
-                        MirageProfileScreen(
-                            user = user,
-                            control = control,
-                            back = { tab = HOME_TAB_HOME },
-                            onOpenControlTab = { tab = HOME_TAB_CONTROL },
-                            onOpenPanelControl = { openControl() },
-                            onOpenLibraryTab = { tab = HOME_TAB_LIBRARY },
-                            onOpenAccountSecurity = {
-                                // changePasswordViewModel is only null before the account's
-                                // email has loaded; Account Security is already deep in a
-                                // logged-in screen, so this is a defensive no-op, not an
-                                // expected path.
-                                if (changePasswordViewModel != null) showChangePassword = true
-                            },
-                            onLogout = { scanner.disconnectDevice(); logout() }
-                        )
+                    when {
+                        showChangePassword && changePasswordViewModel != null -> {
+                            MirageChangePasswordScreen(
+                                vm = changePasswordViewModel,
+                                back = { showChangePassword = false }
+                            )
+                        }
+                        showEditProfile && editProfileViewModel != null -> {
+                            MirageEditProfileScreen(
+                                vm = editProfileViewModel,
+                                back = { showEditProfile = false }
+                            )
+                        }
+                        else -> {
+                            MirageProfileScreen(
+                                user = user,
+                                control = control,
+                                back = { setTab(HOME_TAB_HOME) },
+                                onOpenControlTab = { setTab(HOME_TAB_CONTROL) },
+                                onOpenPanelControl = { openControl() },
+                                onOpenLibraryTab = { setTab(HOME_TAB_LIBRARY) },
+                                onOpenAccountSecurity = {
+                                    // changePasswordViewModel is only null before the account's
+                                    // email has loaded; Account Security is already deep in a
+                                    // logged-in screen, so this is a defensive no-op, not an
+                                    // expected path.
+                                    if (changePasswordViewModel != null) showChangePassword = true
+                                },
+                                onOpenEditProfile = {
+                                    if (editProfileViewModel != null) {
+                                        showEditProfile = true
+                                    } else {
+                                        openEditProfile()
+                                    }
+                                },
+                                onLogout = { scanner.disconnectDevice(); logout() }
+                            )
+                        }
                     }
                 }
             }
