@@ -1,33 +1,6 @@
 package com.carled.app.domain.model.commission
 
-/**
- * Deterministic, reusable price calculator for the CUSTOM configurator.
- *
- * ASSUMPTION (the exact arithmetic isn't spelled out beyond the enum names
- * themselves — AC02 only says the three modifier types exist and that
- * isBasePrice "marks rules contributing to the base bucket for BASE_PERCENT
- * calculation"). This is the one reading consistent with that description:
- *
- *  1. baseBucket = sum of selected-option contributions from rules where
- *     isBasePrice = true (these are themselves FLAT_ADD options, e.g. MATRIX_SIZE).
- *  2. flatTotal  = sum of every selected FLAT_ADD option's contribution, across
- *     ALL rules (already includes the base-bucket rules — not double counted).
- *  3. basePercentTotal = sum over selected BASE_PERCENT options of
- *     (option.basePrice / 100) * baseBucket.
- *  4. runningSubtotal  = flatTotal + basePercentTotal.
- *  5. subtotalPercentTotal = sum over selected SUBTOTAL_PERCENT options of
- *     (option.basePrice / 100) * runningSubtotal.
- *  6. total = runningSubtotal + subtotalPercentTotal.
- *
- * This fixed 3-pass order is what makes the total independent of each rule's
- * own displayOrder — only modifierType decides when an option is applied.
- * QUANTITY rules multiply their single option's contribution by the chosen
- * quantity before it enters whichever pass its modifierType belongs to.
- * TEXT_INPUT rules never affect price.
- *
- * If the backend's real formula differs, this is the one place to change —
- * CommissionViewModel and the form only ever call [calculate] / [visibleRulesInOrder].
- */
+
 object CommissionPriceCalculator {
 
     data class RuleSelection(
@@ -52,7 +25,7 @@ object CommissionPriceCalculator {
         val missingRequiredRuleKeys: List<String>
     )
 
-    /** True if [rule]'s single visibility dependency (if any) is currently satisfied. */
+
     private fun dependencySatisfied(
         rule: PricingRule,
         rulesByKey: Map<String, PricingRule>,
@@ -69,10 +42,6 @@ object CommissionPriceCalculator {
         return requiredOption.optionCode in parentSelection.selectedOptionCodes
     }
 
-    /**
-     * Rules currently visible, in display order, walking the dependency chain
-     * (AC02 caps this at depth 5 server-side; mirrored here as a safety bound).
-     */
     fun visibleRulesInOrder(
         allRules: List<PricingRule>,
         selections: Map<String, RuleSelection>
@@ -129,7 +98,6 @@ object CommissionPriceCalculator {
 
         val contribsByRule = visibleRules.associateWith { contributionsFor(it, selections[it.ruleKey]) }
 
-        // Pass 1 — base bucket + overall flat total.
         var baseBucket = 0L
         var flatTotal = 0L
         for (rule in visibleRules) {
@@ -141,7 +109,6 @@ object CommissionPriceCalculator {
             }
         }
 
-        // Pass 2 — BASE_PERCENT, off the frozen base bucket.
         var basePercentTotal = 0L
         for (rule in visibleRules) {
             contribsByRule.getValue(rule).filter { it.third == ModifierType.BASE_PERCENT }.forEach { (option, qty, _) ->
@@ -153,7 +120,6 @@ object CommissionPriceCalculator {
 
         val runningSubtotal = flatTotal + basePercentTotal
 
-        // Pass 3 — SUBTOTAL_PERCENT, off the running subtotal from passes 1-2.
         var subtotalPercentTotal = 0L
         for (rule in visibleRules) {
             contribsByRule.getValue(rule).filter { it.third == ModifierType.SUBTOTAL_PERCENT }.forEach { (option, qty, _) ->

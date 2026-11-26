@@ -71,6 +71,17 @@ internal class CommissionViewModel(
     private val _actionResult = MutableStateFlow<Resource<Unit>?>(null)
     val actionResult = _actionResult.asStateFlow()
 
+    // Set when confirming a revision card comes back with a new payment session
+    // (an extra-revision fee is owed). The screen observes this to open the
+    // payment dialog immediately instead of waiting for the user to notice the
+    // "pay now" button that reappears once activePaymentCode is reloaded.
+    private val _pendingPaymentCode = MutableStateFlow<String?>(null)
+    val pendingPaymentCode = _pendingPaymentCode.asStateFlow()
+
+    fun consumePendingPaymentCode() {
+        _pendingPaymentCode.value = null
+    }
+
     private var chatJob: Job? = null
 
     init {
@@ -81,7 +92,35 @@ internal class CommissionViewModel(
     fun loadPricing() {
         viewModelScope.launch {
             _pricing.value = Resource.Loading
-            _pricing.value = pricingRepository.getPricing()
+            val result = pricingRepository.getPricing()
+            _pricing.value = result
+            if (result is Resource.Success) applyDefaultSelections(result.data.rules)
+        }
+    }
+
+    /**
+     * Seeds [draft] with each rule's isDefault option(s) so a fresh form already reflects
+     * the backend's defaults — without this, PricingOption.isDefault was never read anywhere
+     * and selections started completely empty, leaving any tier whose triggerOptionIds
+     * pointed at a "default" option permanently unselectable until the customer happened to
+     * click that exact option themselves. Never overwrites a rule the customer already touched.
+     */
+    private fun applyDefaultSelections(rules: List<PricingRule>) {
+        val defaults = rules.mapNotNull { rule ->
+            if (rule.ruleKey in draft.selections) return@mapNotNull null
+            when (rule.selectionType) {
+                SelectionType.SINGLE_SELECT -> rule.options.firstOrNull { it.isDefault }?.let { option ->
+                    rule.ruleKey to CommissionPriceCalculator.RuleSelection(selectedOptionCodes = setOf(option.optionCode))
+                }
+                SelectionType.MULTI_SELECT -> {
+                    val codes = rule.options.filter { it.isDefault }.map { it.optionCode }.toSet()
+                    if (codes.isEmpty()) null else rule.ruleKey to CommissionPriceCalculator.RuleSelection(selectedOptionCodes = codes)
+                }
+                SelectionType.QUANTITY, SelectionType.TEXT_INPUT -> null
+            }
+        }.toMap()
+        if (defaults.isNotEmpty()) {
+            draft = draft.copy(selections = defaults + draft.selections)
         }
     }
 
@@ -131,8 +170,18 @@ internal class CommissionViewModel(
         draft = draft.copy(references = draft.references - uri)
     }
 
-    private fun buildSelectedOptionsPayload(rules: List<PricingRule>): List<SelectedOptionInput> =
-        draft.selections.mapNotNull { (ruleKey, selection) ->
+    private fun buildSelectedOptionsPayload(rules: List<PricingRule>): List<SelectedOptionInput> {
+        // Only rules whose prerequisite chain is currently satisfied may be submitted —
+        // a selection left over from a rule that became hidden after the user changed
+        // its parent option must be dropped, or the server rejects the whole request
+        // with INVALID_COMMISSION_RULE_SELECTION.
+        val visibleRuleKeys = CommissionPriceCalculator
+            .visibleRulesInOrder(rules, draft.selections)
+            .map { it.ruleKey }
+            .toSet()
+
+        return draft.selections.mapNotNull { (ruleKey, selection) ->
+            if (ruleKey !in visibleRuleKeys) return@mapNotNull null
             val rule = rules.firstOrNull { it.ruleKey == ruleKey } ?: return@mapNotNull null
             when (rule.selectionType) {
                 SelectionType.SINGLE_SELECT, SelectionType.MULTI_SELECT -> {
@@ -145,6 +194,7 @@ internal class CommissionViewModel(
                     ?.let { SelectedOptionInput(configId = rule.configId, textValue = it) }
             }
         }
+    }
 
     fun submit() {
         val catalog = (pricing.value as? Resource.Success)?.data ?: return
@@ -176,13 +226,14 @@ internal class CommissionViewModel(
                 tierCode = tier.tierCode,
                 selectedOptions = buildSelectedOptionsPayload(catalog.rules),
                 attachments = attachmentUrls.map { CommissionAttachmentInput(imageUrl = it) },
-                openPaymentImmediately = true
+                openPaymentImmediately = false
             )
 
             val result = repository.submit(request)
             _submission.value = result
             if (result is Resource.Success) {
                 draft = CommissionDraft()
+                applyDefaultSelections(catalog.rules)
                 loadCommissions()
             }
         }
@@ -316,6 +367,7 @@ internal class CommissionViewModel(
             when (val result = repository.confirmRevisionCard(id, messageId)) {
                 is Resource.Success -> {
                     _actionResult.value = Resource.Success(Unit)
+                    result.data.paymentSession?.paymentCode?.let { _pendingPaymentCode.value = it }
                     loadMessages(id)
                     loadDetail(id)
                     loadCommissions()

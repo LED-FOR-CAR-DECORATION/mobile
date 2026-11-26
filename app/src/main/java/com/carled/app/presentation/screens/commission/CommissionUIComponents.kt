@@ -8,8 +8,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -34,7 +37,12 @@ internal fun formatVndAmount(amount: Long): String =
     NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN")).format(amount) + " VND"
 
 @Composable
-internal fun CommissionPanel(title: String, content: @Composable ColumnScope.() -> Unit) {
+internal fun CommissionPanel(
+    title: String,
+    onRefresh: (() -> Unit)? = null,
+    refreshEnabled: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -43,7 +51,18 @@ internal fun CommissionPanel(title: String, content: @Composable ColumnScope.() 
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SectionTitle(title)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SectionTitle(title)
+            if (onRefresh != null) {
+                IconButton(onClick = onRefresh, enabled = refreshEnabled) {
+                    Icon(Icons.Default.Refresh, "Làm mới", tint = Ink)
+                }
+            }
+        }
         content()
     }
 }

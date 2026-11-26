@@ -74,10 +74,75 @@ internal fun CommissionForm(
                     rule.options.filter { it.optionCode in draft.selections[rule.ruleKey]?.selectedOptionCodes.orEmpty() }
                 }.map { it.optionId }.toSet()
             }
+            val totalPriceVnd: Long? = when {
+                selectedTier == null -> null
+                selectedTier.isCustom -> roundUpVnd(selectedTier.basePrice + priceResult.total)
+                else -> roundUpVnd(selectedTier.basePrice)
+            }
 
             if (!editingBrief) {
                 CommissionPanel("Dịch vụ thiết kế chuyên nghiệp") {
                     Text("Form tạo request thiết kế commission", color = Ink, style = MaterialTheme.typography.labelLarge)
+
+                    Text("Chọn gói dịch vụ", color = Ink, style = MaterialTheme.typography.labelLarge)
+                    val sortedTiers = remember(catalog.tiers) {
+                        catalog.tiers.sortedBy { it.displayOrder }
+                    }
+                    var tierDropdownExpanded by remember { mutableStateOf(false) }
+                    Box(Modifier.fillMaxWidth()) {
+                        val selectedLabel = selectedTier?.let { tier ->
+                            "${tier.tierName} — ${formatVndAmount(tier.basePrice)}"
+                        } ?: "Chọn gói dịch vụ…"
+                        MirageButton(
+                            selectedLabel,
+                            { tierDropdownExpanded = true },
+                            Modifier.fillMaxWidth(),
+                            secondary = true
+                        )
+                        DropdownMenu(
+                            expanded = tierDropdownExpanded,
+                            onDismissRequest = { tierDropdownExpanded = false }
+                        ) {
+                            sortedTiers.forEach { tier ->
+                                val eligible = tier.triggerOptionIds.isEmpty() || tier.triggerOptionIds.any { it in selectedOptionIds }
+                                DropdownMenuItem(
+                                    text = {
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                "${tier.tierName} · ${formatVndAmount(tier.basePrice)}",
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            tier.description?.let {
+                                                Text(it, style = MaterialTheme.typography.bodySmall)
+                                            }
+                                            if (!eligible) {
+                                                Text(
+                                                    "Select the required options below to unlock this package.",
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                            }
+                                        }
+                                    },
+                                    enabled = eligible,
+                                    onClick = {
+                                        model.selectTier(tier.tierCode)
+                                        tierDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    selectedTier?.let { tier ->
+                        val eligible = tier.triggerOptionIds.isEmpty() || tier.triggerOptionIds.any { it in selectedOptionIds }
+                        TierCard(
+                            tier = tier,
+                            selected = true,
+                            eligible = eligible,
+                            onSelect = {}
+                        )
+                    }
+
                     visibleRules.forEach { rule ->
                         PricingRuleRow(
                             rule = rule,
@@ -88,17 +153,24 @@ internal fun CommissionForm(
                             onTextChange = { text -> model.setText(rule.ruleKey, text) }
                         )
                     }
-                    Text("Chọn gói dịch vụ", color = Ink, style = MaterialTheme.typography.labelLarge)
-                    catalog.tiers.sortedBy { it.displayOrder }.forEach { tier ->
-                        val eligible = tier.triggerOptionIds.isEmpty() || tier.triggerOptionIds.any { it in selectedOptionIds }
-                        TierCard(
-                            tier = tier,
-                            selected = draft.selectedTierCode == tier.tierCode,
-                            liveCustomTotal = if (tier.isCustom) priceResult.total else null,
-                            eligible = eligible,
-                            onSelect = { model.selectTier(tier.tierCode) }
+
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Cream)
+                            .border(1.dp, Ink)
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Tổng chi phí dự kiến", color = Ink, style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            totalPriceVnd?.let(::formatVndAmount) ?: "Chưa chọn gói dịch vụ",
+                            color = Ink,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
                     }
+
                     val canContinue = selectedTier != null &&
                             (!selectedTier.isCustom || priceResult.missingRequiredRuleKeys.isEmpty())
                     MirageButton(
@@ -109,20 +181,69 @@ internal fun CommissionForm(
                     )
                 }
             } else {
-                val priceVnd = if (selectedTier?.isCustom == true) priceResult.total else selectedTier?.basePrice
-                CommissionPanel("Design brief") {
-                    Text(
-                        "${selectedTier?.tierName.orEmpty()} · ${priceVnd?.let { formatVnd(it.toDouble()) }.orEmpty()}",
-                        color = Ink
-                    )
-                    TextButton(onClick = { editingBrief = false }) { Text("Change design", color = Ink) }
-                    CommissionField(user.fullName?.takeIf { it.isNotBlank() } ?: user.id, {}, "Username (user ID)", readOnly = true)
-                    CommissionField(draft.title, model::updateTitle, "Title")
-                    CommissionField(draft.description, model::updateDescription, "Description", multiline = true)
+                CommissionPanel(" Thông tin chi tiết thiết kế") {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .flatSurface(color = Cream)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                selectedTier?.tierName.orEmpty(),
+                                color = Ink,
+                                fontWeight = FontWeight.ExtraBold,
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            totalPriceVnd?.let {
+                                Text(
+                                    formatVnd(it.toDouble()),
+                                    color = Ink,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(
+                            onClick = { editingBrief = false },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                            modifier = Modifier.border(1.dp, Ink)
+                        ) {
+                            Text(
+                                "Chỉnh sửa thông tin Form",
+                                color = Ink,
+                                maxLines = 1,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    val trimmedTitle = draft.title.trim()
+                    val trimmedDescription = draft.description.trim()
+                    val titleError = if (trimmedTitle.isEmpty()) "Vui lòng nhập tiêu đề thiết kế." else null
+                    val descriptionError = if (trimmedDescription.isEmpty()) "Vui lòng nhập mô tả chi tiết." else null
+                    val isFormValid = titleError == null && descriptionError == null && draft.references.size <= 5
 
-                    Text("Reference images (optional, up to $MAX_REFERENCES)", style = MaterialTheme.typography.labelLarge, color = Ink)
+                    CommissionField(draft.title, model::updateTitle, "Tên thiết kế")
+                    titleError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    CommissionField(draft.description, model::updateDescription, "Mô tả chi tiết thiết kế của bạn", multiline = true)
+                    descriptionError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    Text("Reference images (optional, up to 5)", style = MaterialTheme.typography.labelLarge, color = Ink)
                     ReferenceImageGrid(
                         references = draft.references,
+                        maxReferences = 5,
                         onAddClick = { picker.launch(ImagePickerRequest) },
                         onRemoveClick = model::removeReference
                     )
@@ -134,7 +255,7 @@ internal fun CommissionForm(
                         },
                         model::submit,
                         Modifier.fillMaxWidth(),
-                        enabled = draft.isBriefValid && submissionState !is Resource.Loading,
+                        enabled = isFormValid && submissionState !is Resource.Loading,
                         secondary = true
                     )
                     (submissionState as? Resource.Error)?.let { err ->
@@ -152,13 +273,24 @@ internal fun CommissionForm(
     }
 }
 
+private fun roundUpVnd(amount: Long, step: Long = 1_000L): Long {
+    if (amount <= 0L) return 0L
+    return ((amount + step - 1) / step) * step
+}
+
 @Composable
 private fun ReferenceImageGrid(
     references: List<Uri>,
+    maxReferences: Int = 5,
     onAddClick: () -> Unit,
     onRemoveClick: (Uri) -> Unit
 ) {
-    val slots = references.map<Uri, Uri?> { it } + List(minOf(3, MAX_REFERENCES - references.size)) { null }
+    val slots: List<Uri?> = buildList {
+        addAll(references.take(maxReferences))
+        if (references.size < maxReferences) {
+            add(null)
+        }
+    }
     slots.chunked(3).forEach { row ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             row.forEach { uri ->
@@ -192,12 +324,11 @@ private fun ReferenceImageGrid(
     }
 }
 
-/** One tier card: a fixed-price preset, or the CUSTOM tier priced live from [liveCustomTotal]. */
+/** One tier card: displays the tier's base price (fixed package price or base fee for CUSTOM). */
 @Composable
 internal fun TierCard(
     tier: PricingTier,
     selected: Boolean,
-    liveCustomTotal: Long?,
     eligible: Boolean,
     onSelect: () -> Unit
 ) {
@@ -218,9 +349,8 @@ internal fun TierCard(
             if (selected) ChevronGlyph()
         }
         tier.description?.let { Text(it, color = Ink, style = MaterialTheme.typography.bodySmall) }
-        val price = if (tier.isCustom) liveCustomTotal else tier.basePrice
         Text(
-            if (price != null) "Price: ${formatVndAmount(price)}" else "Configure options below to see price",
+            if (tier.isCustom) "Base fee: ${formatVndAmount(tier.basePrice)}" else "Price: ${formatVndAmount(tier.basePrice)}",
             color = Ink,
             fontWeight = FontWeight.Bold
         )

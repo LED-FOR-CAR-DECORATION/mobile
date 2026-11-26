@@ -1,7 +1,7 @@
 package com.carled.app.presentation.screens.main
 
-import androidx.compose.foundation.Image
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +32,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
@@ -39,11 +40,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.carled.app.R
-import com.carled.app.domain.model.ble.ConnectionState
+import com.carled.app.core.di.ServiceLocator
 import com.carled.app.domain.model.User
+import com.carled.app.domain.model.ble.ConnectionState
 import com.carled.app.domain.model.device.isValidDeviceName
 import com.carled.app.presentation.components.ChevronGlyph
 import com.carled.app.presentation.components.DeviceSection
@@ -55,13 +59,13 @@ import com.carled.app.presentation.components.MirageBackground
 import com.carled.app.presentation.components.MirageMuted
 import com.carled.app.presentation.components.WindowFrame
 import com.carled.app.presentation.components.flatSurface
+import com.carled.app.presentation.components.hardSurface
 import com.carled.app.presentation.screens.commission.CommissionScreen
 import com.carled.app.presentation.screens.control.ControlViewModel
 import com.carled.app.presentation.screens.control.MirageControlScreen
 import com.carled.app.presentation.screens.control.OwnedDevicesViewModel
 import com.carled.app.presentation.screens.marquee.MarqueeViewModel
 import com.carled.app.presentation.screens.marquee.TextProfilesState
-import com.carled.app.core.di.ServiceLocator
 import com.carled.app.presentation.screens.profile.ChangePasswordViewModel
 import com.carled.app.presentation.screens.profile.EditProfileViewModel
 import com.carled.app.presentation.screens.profile.MirageChangePasswordScreen
@@ -69,6 +73,7 @@ import com.carled.app.presentation.screens.profile.MirageEditProfileScreen
 import com.carled.app.presentation.screens.profile.MirageProfileScreen
 import com.carled.app.presentation.screens.scan.ScanViewModel
 import com.carled.app.presentation.theme.Cream
+import com.carled.app.presentation.theme.GreenLight
 import com.carled.app.presentation.theme.Ink
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,6 +85,8 @@ const val HOME_TAB_LIBRARY = 1
 const val HOME_TAB_CONTROL = 2
 const val HOME_TAB_COMMISSION = 3
 const val HOME_TAB_ACCOUNT = 4
+
+private const val PROFILE_PAGE_SIZE = 3
 
 @Composable
 fun MirageHomeScreen(
@@ -145,6 +152,24 @@ fun MirageHomeScreen(
 
     val profilesFlow = remember(marquee) { marquee?.profiles ?: MutableStateFlow(TextProfilesState()).asStateFlow() }
     val profilesState by profilesFlow.collectAsState()
+
+    val allowedProfiles = remember(profilesState.entries, profilesState.plan.limit) {
+        profilesState.entries.take(profilesState.plan.limit.coerceAtLeast(0))
+    }
+    val canCreateProfile = marquee != null && allowedProfiles.size < profilesState.plan.limit
+
+    var profilePage by rememberSaveable { mutableIntStateOf(0) }
+    val totalPages = ((allowedProfiles.size + PROFILE_PAGE_SIZE - 1) / PROFILE_PAGE_SIZE).coerceAtLeast(1)
+    LaunchedEffect(allowedProfiles.size) {
+        if (profilePage >= totalPages) {
+            profilePage = (totalPages - 1).coerceAtLeast(0)
+        }
+    }
+    val pagedProfiles = remember(allowedProfiles, profilePage) {
+        val fromIndex = (profilePage * PROFILE_PAGE_SIZE).coerceAtMost(allowedProfiles.size)
+        val toIndex = (fromIndex + PROFILE_PAGE_SIZE).coerceAtMost(allowedProfiles.size)
+        allowedProfiles.subList(fromIndex, toIndex)
+    }
 
     Scaffold(
         bottomBar = {
@@ -230,49 +255,115 @@ fun MirageHomeScreen(
                                 }
                             }
 
-                            DeviceSection(title = "Profile chữ cá nhân  ${profilesState.entries.size}/${profilesState.plan.limit}") {
+                            DeviceSection(title = "Profile chữ cá nhân  ${allowedProfiles.size}/${profilesState.plan.limit}") {
                                 Column(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    when {
-                                        marquee == null -> EmptyRow("Đăng nhập để xem profile đã lưu.")
-                                        profilesState.entries.isEmpty() -> EmptyRow("Chưa có bản lưu nào. Tạo profile mới bên dưới.")
-                                        else -> profilesState.entries.forEach { profile ->
-                                            Row(
-                                                Modifier.fillMaxWidth().flatSurface(color = Cream)
-                                                    .clickable {
-                                                        marquee.selectProfile(profile.id)
-                                                        marquee.sendMarquee()
-                                                    }
-                                                    .padding(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                                                    Image(
-                                                        painter = painterResource(R.drawable.ic_pixel_perfect_abc),
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(48.dp)
-                                                    )
-                                                }
-                                                Spacer(Modifier.width(12.dp))
-                                                Column(Modifier.weight(1f)) {
-                                                    Text(profile.name, color = Ink, fontSize = 14.sp)
-                                                    Text(profile.text, color = MirageMuted, fontSize = 12.sp, maxLines = 1)
-                                                }
-                                                TextButton(onClick = { openMarquee() }) { Text("Sửa") }
-                                                TextButton(onClick = { marquee.deleteProfile(profile.id) }) { Text("Xóa") }
-                                            }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Profile chữ cá nhân (${allowedProfiles.size}/${profilesState.plan.limit})",
+                                            color = Ink,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .alpha(if (canCreateProfile) 1f else 0.45f)
+                                                .hardSurface(
+                                                    color = if (canCreateProfile) Cream else MirageMuted.copy(alpha = 0.25f),
+                                                    offset = 2.dp,
+                                                    borderWidth = 2.dp
+                                                )
+                                                .clickable(enabled = canCreateProfile, onClick = openMarquee),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "+",
+                                                color = if (canCreateProfile) Ink else MirageMuted,
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
                                         }
                                     }
-                                    if (marquee != null) {
-                                        HardButton(
-                                            text = "+ Tạo profile mới",
-                                            onClick = openMarquee,
-                                            filled = false,
-                                            shadowOffset = HardStyle.CardOffset,
-                                            modifier = Modifier.fillMaxWidth().height(50.dp)
-                                        )
+
+                                    when {
+                                        marquee == null -> EmptyRow("Đăng nhập để xem profile đã lưu.")
+                                        allowedProfiles.isEmpty() -> EmptyRow("Chưa có bản lưu nào. Nhấn + để tạo profile mới.")
+                                        else -> {
+                                            pagedProfiles.forEach { profile ->
+                                                Row(
+                                                    Modifier.fillMaxWidth().flatSurface(color = Cream)
+                                                        .clickable {
+                                                            marquee.selectProfile(profile.id)
+                                                            marquee.sendMarquee()
+                                                        }
+                                                        .padding(12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                                                        Image(
+                                                            painter = painterResource(R.drawable.ic_pixel_perfect_abc),
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(48.dp)
+                                                        )
+                                                    }
+                                                    Spacer(Modifier.width(12.dp))
+                                                    Column(Modifier.weight(1f)) {
+                                                        Text(profile.name, color = Ink, fontSize = 14.sp)
+                                                        Text(profile.text, color = MirageMuted, fontSize = 12.sp, maxLines = 1)
+                                                    }
+                                                    TextButton(onClick = { openMarquee() }) { Text("Sửa", maxLines = 1, softWrap = false) }
+                                                    TextButton(onClick = { marquee.deleteProfile(profile.id) }) { Text("Xóa", maxLines = 1, softWrap = false) }
+                                                }
+                                            }
+                                            if (totalPages > 1) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    PagerButton(
+                                                        label = "< Trước",
+                                                        enabled = profilePage > 0,
+                                                        onClick = { profilePage = (profilePage - 1).coerceAtLeast(0) },
+                                                        modifier = Modifier.weight(1f).height(40.dp)
+                                                    )
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .flatSurface(color = GreenLight)
+                                                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "Trang ${profilePage + 1}/$totalPages",
+                                                            color = Ink,
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                    PagerButton(
+                                                        label = "Sau >",
+                                                        enabled = profilePage < totalPages - 1,
+                                                        onClick = { profilePage = (profilePage + 1).coerceAtMost(totalPages - 1) },
+                                                        modifier = Modifier.weight(1f).height(40.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -361,4 +452,35 @@ fun MirageHomeScreen(
         }
     }) { Text(if (renaming) "Đang lưu…" else "Lưu trên LED") } }, dismissButton = { TextButton(enabled = !renaming, onClick = { rename = false }) { Text("Hủy") } })
     if (help) AlertDialog(onDismissRequest = { help = false }, title = { Text("Kết nối Bluetooth") }, text = { Text("Bật nguồn LED và Bluetooth trên điện thoại. Android 12 trở lên cần quyền Thiết bị ở gần; Android cũ hơn cần quyền Vị trí để quét BLE. Đặt điện thoại gần LED rồi chọn Thêm thiết bị. Điều khiển BLE không cần Internet.") }, confirmButton = { TextButton(onClick = { help = false }) { Text("Đã hiểu") } })
+}
+
+@Composable
+private fun PagerButton(
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .alpha(if (enabled) 1f else 0.45f)
+            .hardSurface(
+                color = Cream,
+                offset = HardStyle.CardOffset,
+                borderWidth = 2.dp
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = Ink,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }

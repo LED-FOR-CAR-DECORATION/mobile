@@ -40,6 +40,17 @@ internal fun CommissionScreen(user: User, modifier: Modifier = Modifier) {
     var conversationId by rememberSaveable(user.id) { mutableStateOf<Long?>(null) }
     var paymentCode by rememberSaveable(user.id) { mutableStateOf<String?>(null) }
 
+    // Auto-open the payment dialog if confirming a revision just produced a new
+    // extra-fee payment session, instead of relying on the user to spot the
+    // "pay now" button after the commission detail reloads.
+    val pendingPaymentCode by model.pendingPaymentCode.collectAsState()
+    LaunchedEffect(pendingPaymentCode) {
+        pendingPaymentCode?.let {
+            paymentCode = it
+            model.consumePendingPaymentCode()
+        }
+    }
+
     WindowFrame(
         title = "Commission",
         modifier = modifier.fillMaxSize()
@@ -86,13 +97,14 @@ internal fun CommissionScreen(user: User, modifier: Modifier = Modifier) {
         }
     }
 
+    // Chat stays mounted underneath: PaymentDialog is its own Dialog window, so it
+    // can layer on top instead of forcing the inbox conversation to close when a
+    // revision confirm produces a new extra-fee payment session.
+    conversationId?.let { id ->
+        CommissionConversation(id, model, onClose = { conversationId = null })
+    }
     paymentCode?.let { code ->
         PaymentDialog(code, model, onClose = { paymentCode = null })
-    }
-    if (paymentCode == null) {
-        conversationId?.let { id ->
-            CommissionConversation(id, model, onClose = { conversationId = null })
-        }
     }
     if (conversationId == null && paymentCode == null) {
         selectedId?.let { id ->
@@ -156,7 +168,11 @@ private fun CommissionHistoryTab(
     onSelectCommission: (Long) -> Unit
 ) {
     val commissionsState by model.commissions.collectAsState()
-    CommissionPanel("Lịch sử đơn tạo") {
+    CommissionPanel(
+        "Lịch sử đơn tạo",
+        onRefresh = { model.loadCommissions() },
+        refreshEnabled = commissionsState !is Resource.Loading
+    ) {
         when (val state = commissionsState) {
             is Resource.Loading -> {
                 CircularProgressIndicator(color = Ink)
@@ -182,7 +198,11 @@ private fun CommissionInboxTab(
     onOpenConversation: (Long) -> Unit
 ) {
     val commissionsState by model.commissions.collectAsState()
-    CommissionPanel("Quản lý inbox") {
+    CommissionPanel(
+        "Quản lý inbox",
+        onRefresh = { model.loadCommissions() },
+        refreshEnabled = commissionsState !is Resource.Loading
+    ) {
         when (val state = commissionsState) {
             is Resource.Loading -> CircularProgressIndicator(color = Ink)
             is Resource.Error -> {
